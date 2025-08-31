@@ -1,0 +1,17 @@
+{
+  "name": "PandaClient",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "electron ."
+  },
+  "keywords": [],
+  "author": "dervarex",
+  "license": "",
+  "description": "GUI for PandaClient | made by dervarex",
+  "devDependencies": {
+    "electron": "^37.3.1",
+    "electron-reload": "^2.0.0-alpha.1"
+  }
+}

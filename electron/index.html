@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PandaClient</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="navbar">
+  <button onclick="openCreateInstanceWindow()" id="plusbtn">+</button>
+  <button onclick="openInstancesWindow()" id="instancesbtn">[InstancesButton]</button>
+</nav>
+
+
+<div id="login-window" class="hidden">
+  <div class="login-header">
+    <span>Login</span>
+<!--    <button onclick="closeLoginWindow()">X</button>-->
+  </div>
+  <div class="login-body">
+    <h4>Login</h4>
+    <form class="login-form">
+      <input type="text" name="Email" placeholder="Email">
+      <input type="password" name="password" placeholder="Password">
+      <input type="submit" value="Login">
+    </form>
+  </div>
+</div>
+
+<button class="launch-btn" onclick="startGame()">
+  <div class="left">
+    <span class="icon">▶</span>
+    <div class="text">
+      <span class="title">Launch 1.20.2</span>
+      <span class="subtitle">PandaClient 2</span>
+    </div>
+  </div>
+  <div class="right" onclick="swapVersion()">
+    <img src="images/swap.png" alt="Swap">
+  </div>
+</button>
+
+
+
+<div id="instances-window" class="hidden">
+  <div class="instances-header">
+    <span>Instances</span>
+    <button onclick="closeInstancesWindow()">X</button>
+  </div>
+  <div class="instances-body">
+    <main id="instance-container"></main>
+  </div>
+</div>
+
+
+
+<div id="create-instance-window" class="hidden">
+  <div class="create-instance-header">
+    <span>Instance Creation</span>
+    <button onclick="closeCreateInstanceWindow()">X</button>
+  </div>
+  <div class="create-instance-body">
+    <h4>Create Instance</h4>
+    <form id="create-instance-form">
+      <label>Instance Name</label>
+      <input id="name" name="name" type="text">
+      <label>Version</label>
+      <input id="version" name="version" type="text">
+      <label>Modloader</label>
+      <input list="instances" name="modloader">
+      <label>Instance Image</label>
+      <input id="image" type="file" accept="image/*">
+      <datalist id="instances">
+        <option value="Vanilla">
+        <option value="Fabric">
+<!--        <option value="Forge">-->
+      </datalist>
+      <input id="submit" type="submit" value="Create">
+
+    </form>
+  </div>
+</div>
+<script src="renderer.js"></script>
+</body>
+</html>
