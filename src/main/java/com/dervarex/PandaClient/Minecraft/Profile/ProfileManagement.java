@@ -31,11 +31,16 @@ public class ProfileManagement {
         profile.put("profileImagePath", imagePath);
 
         // Profilordner erstellen
-        File profileFolder = new File(profileName);
+
+        File profileFolder = new File(
+                new File(getPandaClientFolder.getPandaClientFolder(), "instances"),
+                profileName
+        );
         if (!profileFolder.exists()) profileFolder.mkdirs();
 
         // JSON in dem Ordner speichern
         File jsonFile = new File(profileFolder, "profile.json");
+        jsonFile.getParentFile().mkdirs();
         try (FileWriter file = new FileWriter(jsonFile)) {
             file.write(profile.toString(4));
         } catch (IOException e) {
@@ -73,7 +78,7 @@ public class ProfileManagement {
     }
     public List<Profile> getProfiles() {
         List<Profile> profiles = new ArrayList<>();
-        File profilesDir = new File(new getPandaClientFolder().toString(), "profiles");
+        File profilesDir = new File(getPandaClientFolder.getPandaClientFolder(), "instances");
 
         // Sicherheit: existiert der Ordner überhaupt?
         if (!profilesDir.exists() || !profilesDir.isDirectory()) {

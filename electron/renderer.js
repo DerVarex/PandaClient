@@ -16,6 +16,7 @@
 }); */ //War nur nen test, ob es geht
 
 const imageInput = document.getElementById("image");
+let selectedInstance = null;
 
 document.getElementById("create-instance-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -54,6 +55,45 @@ document.getElementById("create-instance-form").addEventListener("submit", async
 });
 
 
+window.showNotification = function(type, message) {
+    console.log("Notification:", type, message);
+    const container = document.getElementById("notifications");
+
+    const colors = {
+    INFO: "#2E8B57",      // dunkelgrün
+    WARNING: "#FFA500",   // orange
+    ERROR: "#FF4500"      // rot
+};
+    console.log(colors);
+
+    const toast = document.createElement("div");
+    toast.innerText = `[${type}] ${message}`;
+    toast.style.background = colors[type] || "gray";
+    toast.style.color = "white";
+    toast.style.padding = "15px 20px";
+    toast.style.borderRadius = "8px";
+    toast.style.boxShadow = "0px 0px 10px rgba(0,0,0,0.5)";
+    toast.style.fontSize = "16px";
+    toast.style.fontWeight = "bold";
+    toast.style.opacity = "0";
+    toast.style.transform = "translateX(100%)"; // rechts raus starten
+    toast.style.transition = "transform 0.5s, opacity 0.5s";
+
+    container.appendChild(toast);
+
+    // Slide-in Animation
+    setTimeout(() => {
+    toast.style.opacity = "1";
+    toast.style.transform = "translateX(0)";
+}, 10);
+
+    // Slide-out und entfernen nach 4 Sekunden
+    setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transform = "translateX(100%)";
+    setTimeout(() => container.removeChild(toast), 500);
+}, 4000);
+}
 
 async function checkLogin() {
     try {
@@ -103,6 +143,105 @@ async function fetchInstances() {
     const res = await fetch('http://localhost:8800/instances');
     const instances = await res.json();
     renderInstances(instances);
+    return instances;
+}
+
+function formatInstanceLabel(inst) {
+    // robust gegen verschiedene Feldnamen
+    const name = inst.profileName || inst.name || inst.title || "Instance";
+    let loader = inst.loader || inst.modloader || "";
+    // friendly mapping (falls backend "UNK" liefert)
+    if (!loader || /^UNK|UNKNOWN$/i.test(loader)) loader = "Vanilla";
+    const version = inst.versionId || inst.version || "";
+    return `${name} (${loader} ${version})`.trim();
+}
+
+async function swapVersion(event) {
+    console.log("Swap clicked");
+    if (event) event.stopPropagation(); // verhindert, dass startGame() mitfeuert
+
+    const dropdown = document.getElementById("swap-dropdown");
+    // toggle visible
+    dropdown.classList.toggle("hidden");
+    if (dropdown.classList.contains("hidden")) return;
+
+    dropdown.innerHTML = ''; // clear
+
+    try {
+        const res = await fetch("http://localhost:8800/instances");
+        const instances = await res.json();
+        console.log("Instances from backend:", instances);
+
+        if (!Array.isArray(instances) || instances.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = 'instance-item';
+            empty.textContent = "Keine Instanzen gefunden";
+            dropdown.appendChild(empty);
+            return;
+        }
+
+        instances.forEach(inst => {
+            const item = document.createElement("div");
+            item.className = 'instance-item';
+            item.textContent = formatInstanceLabel(inst);
+
+            item.onclick = (e) => {
+                e.stopPropagation(); // wichtig, damit der click nicht hochgeht
+                selectedInstance = inst;
+                updateLaunchButton(inst);
+                dropdown.classList.add("hidden");
+                showNotification("INFO", `Ausgewählt: ${inst.profileName || inst.name || 'Instance'}`);
+            };
+
+            dropdown.appendChild(item);
+        });
+    } catch (err) {
+        console.error("Fehler beim Laden der Instanzen:", err);
+        const errEl = document.createElement("div");
+        errEl.className = 'instance-item';
+        errEl.textContent = "Fehler beim Laden";
+        dropdown.appendChild(errEl);
+    }
+}
+
+
+
+function showInstanceSelector(instances) {
+    const container = document.getElementById('instance-container');
+    container.innerHTML = ''; // Reset
+
+    const list = document.createElement('ul');
+    list.classList.add('instance-selector');
+
+    instances.forEach(inst => {
+        const item = document.createElement('li');
+        item.textContent = `${inst.name} (${inst.modloader} ${inst.version})`;
+
+        item.addEventListener('click', () => {
+            selectedInstance = inst; // speichern, welche Instanz gewählt wurde
+            updateLaunchButton(inst);
+            container.innerHTML = ''; // Auswahl schließen
+        });
+
+        list.appendChild(item);
+    });
+
+    container.appendChild(list);
+}
+
+function updateLaunchButton(inst) {
+    const launchTitle = document.querySelector('.launch-btn .title');
+    launchTitle.textContent = `${inst.name} ${inst.version}`;
+}
+// Startet die gewählte Instance
+async function startGame() {
+    if (!selectedInstance) {
+        alert('Bitte zuerst eine Instance auswählen!');
+        return;
+    }
+    console.log('Launching', selectedInstance);
+    // Starten
+    const start = await fetch("http://localhost:8800/launch");
 }
 
 function renderInstances(instances) {
@@ -114,7 +253,7 @@ function renderInstances(instances) {
         card.classList.add('card');
         card.innerHTML = `
       <div class="visual">
-        <img src="${inst.image || 'ExampleImage.jpg'}" alt="${inst.name}" />
+        <img src="${inst.image || 'images/default.png'}" alt="${inst.name}" />
       </div>
       <div class="info">
         <div class="title-row">
@@ -145,6 +284,7 @@ function renderInstances(instances) {
 // Öffnen und Schließen
 function openInstancesWindow() {
     document.getElementById("instances-window").classList.remove("hidden");
+    fetchInstances(); // Instanzen laden und anzeigen
 }
 
 function closeInstancesWindow() {

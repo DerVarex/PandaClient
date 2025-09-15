@@ -7,6 +7,7 @@ import com.dervarex.PandaClient.utils.Minecraft.forge.utils.ForgeGameArgs;
 import com.dervarex.PandaClient.utils.Minecraft.forge.utils.JarHandling;
 import com.dervarex.PandaClient.utils.Minecraft.forge.utils.Json;
 import com.dervarex.PandaClient.utils.Minecraft.forge.utils.VanillaGameArgs;
+import com.dervarex.PandaClient.utils.file.getPandaClientFolder;
 import com.google.gson.*;
 import java.io.*;
 import java.net.URL;
@@ -20,22 +21,22 @@ public class MinecraftLauncher {
 
 
     private static final String MINECRAFT_API_URL = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
-    private static final String BASE_DIR = System.getenv("APPDATA") + "\\PandaClient";
-    private static final File INSTANCES_BASE_DIR = new File(BASE_DIR + "\\instances");
+    private static final File BASE_DIR = getPandaClientFolder.getPandaClientFolder();
+    private static final File INSTANCES_BASE_DIR = new File(BASE_DIR, "instances");
 
 
     public static void LaunchMinecraft(String version, String username, String uuid, String accessToken, File instanceName, Boolean launchMc, Boolean installForge) {
         try {
             System.out.println("Starte Minecraft-Launcher...");
 
-            final File INSTANCE_DIR = new File(INSTANCES_BASE_DIR + "\\" + instanceName);
+            final File INSTANCE_DIR = new File(INSTANCES_BASE_DIR + "\\" + instanceName.getName());
             final File LIB_DIR = new File(INSTANCE_DIR + "\\libraries");
             final File NATIVES_DIR = new File(INSTANCE_DIR + "\\natives");
             final File ASSETS_DIR = new File(INSTANCE_DIR + "\\assets");
 
 
             // Ordner erstellen, falls nicht vorhanden
-            Files.createDirectories(Paths.get(BASE_DIR));
+            Files.createDirectories(BASE_DIR.toPath());
             Files.createDirectories(LIB_DIR.toPath());
             Files.createDirectories(NATIVES_DIR.toPath());
             Files.createDirectories(INSTANCES_BASE_DIR.toPath());
@@ -61,7 +62,7 @@ public class MinecraftLauncher {
             // Minecraft starten
             if(launchMc = true) {
                 System.out.println("🚀 Starte Minecraft...");
-                startMinecraft(installForge, ASSETS_DIR, versionInfo, username, uuid, accessToken, LIB_DIR, INSTANCE_DIR.toString(), version);
+                startMinecraft(installForge, ASSETS_DIR, versionInfo, username, uuid, accessToken, LIB_DIR, INSTANCE_DIR.getPath(), version);
             }
         } catch (Exception e) {
             System.err.println("❌ Fehler beim Starten von Minecraft:");

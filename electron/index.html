@@ -36,22 +36,37 @@
       <span class="subtitle">PandaClient 2</span>
     </div>
   </div>
-  <div class="right" onclick="swapVersion()">
+  <div class="right" style="position: relative;" onclick="swapVersion(event)">
     <img src="images/swap.png" alt="Swap">
+    <div id="swap-dropdown" class="hidden"></div>
   </div>
+
 </button>
-
-
-
+<!-- Container für die Instanzen -->
 <div id="instances-window" class="hidden">
   <div class="instances-header">
     <span>Instances</span>
     <button onclick="closeInstancesWindow()">X</button>
   </div>
   <div class="instances-body">
-    <main id="instance-container"></main>
+    <div id="instance-container"></div>
   </div>
 </div>
+
+
+
+<div id="notifications" style="
+    position: fixed;
+    top: 50px;
+    right: 10px;
+    width: 300px; /* Breite größer */
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;">
+</div>
+
+
 
 
 
@@ -82,5 +97,6 @@
   </div>
 </div>
 <script src="renderer.js"></script>
+<script src="Websocket/8888/notification.js"></script>
 </body>
 </html>

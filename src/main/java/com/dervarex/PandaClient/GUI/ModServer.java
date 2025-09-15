@@ -1,5 +1,6 @@
 package com.dervarex.PandaClient.GUI;
 
+import com.dervarex.PandaClient.Minecraft.MinecraftLauncher;
 import com.dervarex.PandaClient.Minecraft.Profile.Profile;
 import com.dervarex.PandaClient.Minecraft.Profile.ProfileManagement;
 import com.dervarex.PandaClient.Minecraft.loader.LoaderType;
@@ -24,6 +25,10 @@ public class ModServer extends NanoHTTPD {
         if ("/isLoggedIn".equals(uri)) {
             String json = "{\"loggedIn\":" + AuthManager.hasTokenSaved() + "}";
             return jsonResponse(json);
+        }
+        // --- /launch ---
+        if ("/launch".equals(uri)) {
+            
         }
         // --- /instances ---
         if ("/instances".equals(uri)) {
@@ -60,6 +65,7 @@ public class ModServer extends NanoHTTPD {
                 return jsonResponse("{\"success\":true}");
             } catch (Exception e) {
                 e.printStackTrace();
+                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Error while creating Instance" + e.getMessage()/* + " (ModServer /create-instance)"*/);
                 return jsonResponse("{\"success\":false, \"error\":\"" + e.getMessage() + "\"}");
             }
         }
@@ -69,9 +75,23 @@ public class ModServer extends NanoHTTPD {
                 AuthManager.loginWithSavedToken();
                 return jsonResponse("{\"success\":true}");
             } catch (Exception e) {
+                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Error while trying to login with token " + e.getMessage());
                 throw new RuntimeException(e);
             }
         }
+//        // --- /select-instance ---
+//        if (uri.startsWith("/select-instance")) {
+//            Map<String, String> params = session.getParms();
+//            String id = params.get("id");
+//
+//            // ID speichern (z. B. in ProfileManagement oder statische Variable)
+//            ProfileManagement pm = new ProfileManagement();
+//            pm.loadProfile(id);
+//
+//            String json = "{\"success\":true, \"selected\":\"" + id + "\"}";
+//            return jsonResponse(json);
+//        }
+
         // --- /login ---
         if ("/login".equals(uri)) {
             Map<String, String> params = session.getParms();
@@ -84,10 +104,12 @@ public class ModServer extends NanoHTTPD {
                     AuthManager.loginWithSavedToken();
                 } else {
                     AuthManager.loginWithCredentials(email, password);
+                    NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.INFO, "Please login with your Minecraft account");
                 }
                 worked = true;
             } catch (Exception e) {
                 worked = false;
+                throw new RuntimeException(e);
             }
 
             String json = "{\"success\":" + worked + "}";
@@ -95,7 +117,9 @@ public class ModServer extends NanoHTTPD {
         }
 
         // --- Not Found ---
+        NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Requested URI not found: " + uri + " Please report this to the dev team, thank you");
         return newFixedLengthResponse(Response.Status.NOT_FOUND, "application/json", "{\"error\":\"Not Found\"}");
+
     }
 
     // Hilfsmethode für JSON + CORS
