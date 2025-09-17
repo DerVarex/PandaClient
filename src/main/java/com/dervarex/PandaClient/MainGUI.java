@@ -8,6 +8,7 @@ import fi.iki.elonen.NanoHTTPD;
 import java.io.IOException;
 
 public class MainGUI {
+    // Starts the GUI and Initiales processes
     public MainGUI() {
         ModServer server = new ModServer(8800);
         try {
