@@ -95,7 +95,7 @@ public class ModServer extends NanoHTTPD {
         // --- /login ---
         if ("/login".equals(uri)) {
             Map<String, String> params = session.getParms();
-            String email = params.get("email");
+            String email = params.get("Email");
             String password = params.get("password");
 
             boolean worked = false;
