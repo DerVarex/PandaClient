@@ -62,6 +62,11 @@
             <artifactId>Java-WebSocket</artifactId>
             <version>1.5.6</version>
         </dependency>
+        <dependency>
+            <groupId>net.fabricmc.fabric-api</groupId>
+            <artifactId>fabric-api</artifactId>
+            <version>0.133.4+1.21.8</version>
+        </dependency>
     </dependencies>
     
     <build>
