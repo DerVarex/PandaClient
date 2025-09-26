@@ -113,7 +113,7 @@ async function checkLogin() {
 
                 try {
                     // Port auf 8800
-                    const respLogin = await fetch(`http://localhost:8800/login?email=${email}&password=${password}`);
+                    const respLogin = await fetch(`http://localhost:8800/login?Email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`);
                     const result = await respLogin.json();
                     console.log("Login Result:", result);
 
