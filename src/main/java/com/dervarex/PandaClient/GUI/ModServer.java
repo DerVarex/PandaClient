@@ -96,7 +96,21 @@ public class ModServer extends NanoHTTPD {
         if ("/login".equals(uri)) {
             Map<String, String> params = session.getParms();
             String email = params.get("Email");
-            String password = params.get("password");
+String password = params.get("password");
+
+if (email == null || email.isBlank()) {
+    NotificationServerStart.getNotificationServer().showNotification(
+        NotificationServer.NotificationType.ERROR, "Email is blank"
+    );
+    return jsonResponse("{\"success\":false}");
+}
+
+if (password == null || password.isBlank()) {
+    NotificationServerStart.getNotificationServer().showNotification(
+        NotificationServer.NotificationType.ERROR, "Password is blank"
+    );
+    return jsonResponse("{\"success\":false}");
+}
 
             boolean worked = false;
             try {
