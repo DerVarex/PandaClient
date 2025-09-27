@@ -1,4 +1,4 @@
-package com.dervarex.PandaClient.utils.WebUtils;
+package com.dervarex.PandaClient.utils.NetUtils;
 
 import java.io.*;
 import java.net.HttpURLConnection;
