@@ -108,12 +108,11 @@ async function checkLogin() {
             document.querySelector('.login-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
 
-                const email = document.querySelector('input[name="Email"]').value;
-                const password = document.querySelector('input[name="password"]').value;
+
 
                 try {
                     // Port auf 8800
-                    const respLogin = await fetch(`http://localhost:8800/login?Email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`);
+                    const respLogin = await fetch(`http://localhost:8800/login`);
                     const result = await respLogin.json();
                     console.log("Login Result:", result);
 

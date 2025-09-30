@@ -1,14 +1,17 @@
 package com.dervarex.PandaClient.Auth;
 
-import fr.litarvan.openauth.microsoft.MicrosoftAuthResult;
-import fr.litarvan.openauth.microsoft.MicrosoftAuthenticator;
-import fr.litarvan.openauth.microsoft.model.response.MinecraftProfile;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import net.lenni0451.commons.httpclient.HttpClient;
+import net.raphimc.minecraftauth.MinecraftAuth;
+import net.raphimc.minecraftauth.step.java.StepMCProfile;
+import net.raphimc.minecraftauth.step.java.session.StepFullJavaSession;
+import net.raphimc.minecraftauth.step.msa.StepMsaDeviceCode;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
-import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
@@ -16,11 +19,17 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * AuthManager für PandaClient
+ * - Speichert die komplette MinecraftAuth Session verschlüsselt
+ * - Lädt und refreshed sie beim Start automatisch
+ * - Login via DeviceCode (mit Code/Link für den Nutzer)
+ */
 public class AuthManager {
 
     private static final Path BASE_DIR = Path.of(System.getenv("APPDATA"), "PandaClient");
     private static final Path KEY_FILE = BASE_DIR.resolve("master.key");
-    private static final Path TOKEN_FILE = BASE_DIR.resolve("token.enc");
+    private static final Path SESSION_FILE = BASE_DIR.resolve("session.enc"); // <== jetzt gesamte Session
 
     private static SecretKey masterKey;
     private static Map<String, User> session = new HashMap<>();
@@ -33,6 +42,8 @@ public class AuthManager {
             e.printStackTrace();
         }
     }
+
+    // --- Key Handling ------------------------------------------------------
 
     private static SecretKey loadOrCreateMasterKey() throws Exception {
         if (Files.exists(KEY_FILE)) {
@@ -47,85 +58,119 @@ public class AuthManager {
         }
     }
 
-    private static void saveEncryptedToken(String refreshToken) throws Exception {
+    private static void saveEncryptedSession(JsonObject sessionJson) throws Exception {
         Cipher cipher = Cipher.getInstance("AES");
         cipher.init(Cipher.ENCRYPT_MODE, masterKey);
-        byte[] encrypted = cipher.doFinal(refreshToken.getBytes());
-        Files.write(TOKEN_FILE, Base64.getEncoder().encode(encrypted));
+        byte[] encrypted = cipher.doFinal(sessionJson.toString().getBytes());
+        Files.write(SESSION_FILE, Base64.getEncoder().encode(encrypted));
     }
+    private static final Gson GSON = new Gson();
 
-    private static String loadEncryptedToken() throws Exception {
-        if (!Files.exists(TOKEN_FILE)) return null;
-        byte[] encrypted = Base64.getDecoder().decode(Files.readAllBytes(TOKEN_FILE));
+    private static JsonObject loadEncryptedSession() throws Exception {
+        if (!Files.exists(SESSION_FILE)) return null;
+        byte[] encrypted = Base64.getDecoder().decode(Files.readAllBytes(SESSION_FILE));
         Cipher cipher = Cipher.getInstance("AES");
         cipher.init(Cipher.DECRYPT_MODE, masterKey);
-        return new String(cipher.doFinal(encrypted));
+        String json = new String(cipher.doFinal(encrypted));
+        return GSON.fromJson(json, JsonObject.class);
     }
 
-    // Login mit Email und Passwort
-    public static User loginWithCredentials(String email, String password) throws Exception {
-        MicrosoftAuthenticator auth = new MicrosoftAuthenticator();
-        MicrosoftAuthResult result = auth.loginWithCredentials(email, password);
-        MinecraftProfile profile = result.getProfile();
+    // --- Login mit DeviceCode ----------------------------------------------
 
-        User user = new User(profile.getId(), profile.getName(),
-                result.getAccessToken(), result.getRefreshToken());
-        session.put(user.getUuid(), user);
-
-        saveEncryptedToken(user.getRefreshToken());
-
-        return user;
-    }
-
-    // Login mit gespeicherten (verschlüsselten) RefreshToken
-    public static User loginWithSavedToken() {
+    /**
+     * Führt einen neuen Login durch, speichert die komplette Session
+     */
+    public static User login() {
+        HttpClient httpClient = MinecraftAuth.createHttpClient();
         try {
-            String refreshToken = loadEncryptedToken();
-            if (refreshToken == null) return null;
+            StepFullJavaSession.FullJavaSession javaSession =
+                    MinecraftAuth.JAVA_DEVICE_CODE_LOGIN.getFromInput(httpClient,
+                            new StepMsaDeviceCode.MsaDeviceCodeCallback(msa -> {
+                                System.out.println("Go to " + msa.getVerificationUri());
+                                System.out.println("Enter code " + msa.getUserCode());
+                                System.out.println("Direct URL: " + msa.getDirectVerificationUri());
+                            }));
 
-            MicrosoftAuthenticator auth = new MicrosoftAuthenticator();
-            MicrosoftAuthResult result = auth.loginWithRefreshToken(refreshToken);
-            MinecraftProfile profile = result.getProfile();
+            JsonObject serialized = MinecraftAuth.JAVA_DEVICE_CODE_LOGIN.toJson(javaSession);
+            saveEncryptedSession(serialized); // ganze Session speichern
 
-            User user = new User(profile.getId(), profile.getName(),
-                    result.getAccessToken(), result.getRefreshToken());
+            StepMCProfile.MCProfile profile = javaSession.getMcProfile();
+            User user = new User(profile.getId().toString(),
+                    profile.getName(),
+                    profile.getMcToken().getAccessToken(),
+                    serialized);
             session.put(user.getUuid(), user);
-
-            saveEncryptedToken(user.getRefreshToken()); // Token aktualisieren
             return user;
-        } catch(Exception e) {
-            System.err.println("Login mit Token fehlgeschlagen: " + e.getMessage());
+        } catch (Exception e) {
+            throw new RuntimeException("Login failed", e);
+        }
+    }
+
+    // --- Login mit gespeicherter Session + Refresh -------------------------
+
+    /**
+     * Lädt gespeicherte Session und refresht Tokens falls nötig
+     */
+    public static User loginWithSavedSession() {
+        try {
+            JsonObject saved = loadEncryptedSession();
+            if (saved == null) return null;
+
+            HttpClient httpClient = MinecraftAuth.createHttpClient();
+
+            // aus gespeicherter Session wieder FullJavaSession erstellen
+            StepFullJavaSession.FullJavaSession loaded =
+                    MinecraftAuth.JAVA_DEVICE_CODE_LOGIN.fromJson(saved);
+
+            // Refresh: aktualisiert nur abgelaufene Tokens
+            StepFullJavaSession.FullJavaSession refreshed =
+                    MinecraftAuth.JAVA_DEVICE_CODE_LOGIN.refresh(httpClient, loaded);
+
+            // neu speichern, falls sich Tokens geändert haben
+            JsonObject refreshedJson = MinecraftAuth.JAVA_DEVICE_CODE_LOGIN.toJson(refreshed);
+            saveEncryptedSession(refreshedJson);
+
+            StepMCProfile.MCProfile profile = refreshed.getMcProfile();
+            User user = new User(profile.getId().toString(),
+                    profile.getName(),
+                    profile.getMcToken().getAccessToken(),
+                    refreshedJson);
+            session.put(user.getUuid(), user);
+            return user;
+        } catch (Exception e) {
+            System.err.println("Login/Refresh fehlgeschlagen: " + e.getMessage());
             return null;
         }
     }
 
+    // --- Hilfsmethoden -----------------------------------------------------
 
-    public static Boolean hasTokenSaved() {
-        return TOKEN_FILE.toFile().exists();
+    public static boolean hasSessionSaved() {
+        return SESSION_FILE.toFile().exists();
     }
 
-    // Zugriff auf Session
     public static User getUser() {
         return session.values().stream().findFirst().orElse(null);
     }
 
-    // User
+    // --- User Datenklasse --------------------------------------------------
+
     public static class User {
         private final String uuid;
         private final String username;
         private final String accessToken;
-        private final String refreshToken;
+        private final JsonObject serializedSession;
 
-        public User(String uuid, String username, String accessToken, String refreshToken) {
+        public User(String uuid, String username, String accessToken, JsonObject serializedSession) {
             this.uuid = uuid;
             this.username = username;
             this.accessToken = accessToken;
-            this.refreshToken = refreshToken;
+            this.serializedSession = serializedSession;
         }
 
         public String getUuid() { return uuid; }
         public String getUsername() { return username; }
         public String getAccessToken() { return accessToken; }
-        public String getRefreshToken() { return refreshToken; }
+        public JsonObject getSerializedSession() { return serializedSession; }
     }
 }

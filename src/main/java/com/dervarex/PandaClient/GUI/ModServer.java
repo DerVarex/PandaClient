@@ -23,7 +23,7 @@ public class ModServer extends NanoHTTPD {
 
         // --- /isLoggedIn ---
         if ("/isLoggedIn".equals(uri)) {
-            String json = "{\"loggedIn\":" + AuthManager.hasTokenSaved() + "}";
+            String json = "{\"loggedIn\":" + AuthManager.hasSessionSaved() + "}";
             return jsonResponse(json);
         }
         // --- /launch ---
@@ -72,10 +72,10 @@ public class ModServer extends NanoHTTPD {
         // --- /loginWithToken ---
         if ("/loginWithToken".equals(uri)) {
             try {
-                AuthManager.loginWithSavedToken();
+                AuthManager.loginWithSavedSession();
                 return jsonResponse("{\"success\":true}");
             } catch (Exception e) {
-                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Error while trying to login with token " + e.getMessage());
+                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Error while trying to login with saved Session: " + e.getMessage());
                 throw new RuntimeException(e);
             }
         }
@@ -94,31 +94,13 @@ public class ModServer extends NanoHTTPD {
 
         // --- /login ---
         if ("/login".equals(uri)) {
-            Map<String, String> params = session.getParms();
-            String email = params.get("Email");
-String password = params.get("password");
-
-if (email == null || email.isBlank()) {
-    NotificationServerStart.getNotificationServer().showNotification(
-        NotificationServer.NotificationType.ERROR, "Email is blank"
-    );
-    return jsonResponse("{\"success\":false}");
-}
-
-if (password == null || password.isBlank()) {
-    NotificationServerStart.getNotificationServer().showNotification(
-        NotificationServer.NotificationType.ERROR, "Password is blank"
-    );
-    return jsonResponse("{\"success\":false}");
-}
-
             boolean worked = false;
             try {
-                if (AuthManager.hasTokenSaved()) {
-                    AuthManager.loginWithSavedToken();
+                if (AuthManager.hasSessionSaved()) {
+                    AuthManager.loginWithSavedSession();
                 } else {
-                    AuthManager.loginWithCredentials(email, password);
-                    NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.INFO, "Please login with your Minecraft account");
+                    AuthManager.login();
+                    NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.INFO, "Please login with your Minecraft account via Device Code");
                 }
                 worked = true;
             } catch (Exception e) {

@@ -48,12 +48,11 @@ public class ProfileManagement {
         }
 
         AuthManager.User User = AuthManager.getUser();
-        Boolean installForge = false;
         /*if(loader == LoaderType.FORGE) {
             installForge = true;
         } */
 
-        MinecraftLauncher.LaunchMinecraft(versionId, User.getUsername(), User.getUuid(), User.getAccessToken(), profileFolder, false, installForge);
+        MinecraftLauncher.LaunchMinecraft(versionId, User.getUsername(), User.getUuid(), User.getAccessToken(), profileFolder, false);
     }
     public Profile loadProfile(File profileFile){
         try {
