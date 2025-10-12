@@ -14,6 +14,6 @@
     "electron-reload": "^2.0.0-alpha.1"
   },
   "dependencies": {
-    "electron": "^38.1.2"
+    "electron": "^38.2.2"
   }
 }

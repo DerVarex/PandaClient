@@ -1,31 +1,34 @@
-require('electron-reload')(__dirname, {
-    electron: require(`${__dirname}/node_modules/electron`)
-});
-
-
-
 const { app, BrowserWindow } = require("electron");
 const path = require("path");
+const fs = require("fs");
 
 function createWindow() {
-    const win = new BrowserWindow({
+    const iconPath = path.join(__dirname, "images", "logo.ico");
+    const windowOptions = {
         width: 800,
         height: 600,
         frame: false,
         webPreferences: {
-            //preload: path.join(__dirname, "preload.js"), // optional
-            nodeIntegration : true,
-            contextIsolation : true
+            nodeIntegration: true,
+            contextIsolation: true
         }
-    });
-    // Settings damit es akzeptabel aussieht :)
-    win.removeMenu();
-    win.setIcon("images/logo.ico")
+    };
 
-    // Damit der müll nicht in PandaClient ordner ist1
+    // Only set icon if it exists (prevents errors on missing file)
+    if (fs.existsSync(iconPath)) {
+        windowOptions.icon = iconPath;
+    }
+
+    const win = new BrowserWindow(windowOptions);
+
+    win.removeMenu();
+
     app.setPath('userData', path.join(app.getPath('userData'), 'PandaClientData'));
 
-    win.loadFile("index.html");
+    win.loadFile("index.html").catch(err => {
+        console.error("Failed to load index.html:", err);
+    });
+
     win.webContents.openDevTools();
 }
 

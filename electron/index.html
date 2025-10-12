@@ -6,94 +6,74 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div id="app-container">
+  <nav class="navbar">
+    <button onclick="openCreateInstanceWindow()" id="plusbtn">+</button>
+    <button onclick="openInstancesWindow()" id="instancesbtn">[InstancesButton]</button>
+  </nav>
 
-<nav class="navbar">
-  <button onclick="openCreateInstanceWindow()" id="plusbtn">+</button>
-  <button onclick="openInstancesWindow()" id="instancesbtn">[InstancesButton]</button>
-</nav>
-
-
-<div id="login-window" class="hidden">
-  <div class="login-header">
-    <span>Login</span>
-<!--    <button onclick="closeLoginWindow()">X</button>-->
-  </div>
-  <div class="login-body">
-    <h4>Login</h4>
-    <form class="login-form">
-<!--      <input type="text" name="Email" placeholder="Email">-->
-<!--      <input type="password" name="password" placeholder="Password">-->
-      <input type="submit" value="Login">
-    </form>
-  </div>
-</div>
-
-<button class="launch-btn" onclick="startGame()">
-  <div class="left">
-    <span class="icon">▶</span>
-    <div class="text">
-      <span class="title">Launch 1.20.2</span>
-      <span class="subtitle">PandaClient 2</span>
+  <div id="login-window" class="hidden">
+    <div class="login-header">
+      <span>Login</span>
+    </div>
+    <div class="login-body">
+      <h4>Login</h4>
+      <form class="login-form">
+        <input type="submit" value="Login">
+      </form>
     </div>
   </div>
-  <div class="right" style="position: relative;" onclick="swapVersion(event)">
-    <img src="images/swap.png" alt="Swap">
-    <div id="swap-dropdown" class="hidden"></div>
+
+  <button class="launch-btn" onclick="startGame()">
+    <div class="left">
+      <span class="icon">▶</span>
+      <div class="text">
+        <span class="title">Launch 1.20.2</span>
+        <span class="subtitle">PandaClient 2</span>
+      </div>
+    </div>
+    <div class="right" style="position: relative;" onclick="swapVersion(event)">
+      <img src="images/swap.png" alt="Swap">
+    </div>
+  </button>
+
+  <!-- Instance Selection Modal (now styled and structured like create-instance-window) -->
+  <div id="select-instance-window" class="modal hidden">
+    <div class="select-instance-header">
+      <span>Select Instance</span>
+      <button onclick="closeSelectInstanceWindow()">X</button>
+    </div>
+    <div class="select-instance-body">
+      <div id="select-instance-list"></div>
+    </div>
   </div>
 
-</button>
-<!-- Container für die Instanzen -->
-<div id="instances-window" class="hidden">
-  <div class="instances-header">
-    <span>Instances</span>
-    <button onclick="closeInstancesWindow()">X</button>
-  </div>
-  <div class="instances-body">
-    <div id="instance-container"></div>
-  </div>
-</div>
+  <!-- Notifications -->
+  <div id="notifications" style="position: fixed; top: 50px; right: 10px; width: 300px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;"></div>
 
-
-
-<div id="notifications" style="
-    position: fixed;
-    top: 50px;
-    right: 10px;
-    width: 300px; /* Breite größer */
-    z-index: 9999;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;">
-</div>
-
-
-
-
-
-<div id="create-instance-window" class="hidden">
-  <div class="create-instance-header">
-    <span>Instance Creation</span>
-    <button onclick="closeCreateInstanceWindow()">X</button>
-  </div>
-  <div class="create-instance-body">
-    <h4>Create Instance</h4>
-    <form id="create-instance-form">
-      <label>Instance Name</label>
-      <input id="name" name="name" type="text">
-      <label>Version</label>
-      <input id="version" name="version" type="text">
-      <label>Modloader</label>
-      <input list="instances" name="modloader">
-      <label>Instance Image</label>
-      <input id="image" type="file" accept="image/*">
-      <datalist id="instances">
-        <option value="Vanilla">
-        <option value="Fabric">
-<!--        <option value="Forge">-->
-      </datalist>
-      <input id="submit" type="submit" value="Create">
-
-    </form>
+  <div id="create-instance-window" class="hidden">
+    <div class="create-instance-header">
+      <span>Instance Creation</span>
+      <button onclick="closeCreateInstanceWindow()">X</button>
+    </div>
+    <div class="create-instance-body">
+      <h4>Create Instance</h4>
+      <form id="create-instance-form">
+        <label>Instance Name</label>
+        <input id="name" name="name" type="text">
+        <label>Version</label>
+        <input id="version" name="version" type="text">
+        <label>Modloader</label>
+        <input list="instances" name="modloader">
+        <label>Instance Image</label>
+        <input id="image" type="file" accept="image/*">
+        <datalist id="instances">
+          <option value="Vanilla">
+          <option value="Fabric">
+        </datalist>
+        <input id="submit" type="submit" value="Create">
+      </form>
+    </div>
   </div>
 </div>
 <script src="renderer.js"></script>

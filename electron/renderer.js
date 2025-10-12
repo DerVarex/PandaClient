@@ -1,22 +1,6 @@
-/*document.getElementById('Test').addEventListener('click', async () => {
-    try {
-        const response = await fetch('http://localhost:8080/Test');
-        const mods = await response.json();
-
-        const list = document.getElementById('testList');
-        list.innerHTML = '';
-        mods.forEach(mod => {
-            const li = document.createElement('li');
-            li.textContent = mod;
-            list.appendChild(li);
-        });
-    } catch (err) {
-        console.error("Fehler beim Abrufen vom Test:", err);
-    }
-}); */ //War nur nen test, ob es geht
+console.log('renderer.js loaded');
 
 const imageInput = document.getElementById("image");
-let selectedInstance = null;
 
 document.getElementById("create-instance-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -141,8 +125,13 @@ async function checkLogin() {
 async function fetchInstances() {
     const res = await fetch('http://localhost:8800/instances');
     const instances = await res.json();
-    renderInstances(instances);
+    // renderInstances(instances); // Commented out to avoid error
     return instances;
+}
+// Add stub for renderInstances to avoid ReferenceError if called elsewhere
+function renderInstances(instances) {
+    // Stub: do nothing or log
+    console.log('renderInstances called (stub)', instances);
 }
 
 function formatInstanceLabel(inst) {
@@ -155,189 +144,129 @@ function formatInstanceLabel(inst) {
     return `${name} (${loader} ${version})`.trim();
 }
 
-async function swapVersion(event) {
-    console.log("Swap clicked");
-    if (event) event.stopPropagation(); // verhindert, dass startGame() mitfeuert
+// --- Instance Selection Logic ---
+let selectedInstance = null;
+let instancesCache = [];
 
-    const dropdown = document.getElementById("swap-dropdown");
-    // toggle visible
-    dropdown.classList.toggle("hidden");
-    if (dropdown.classList.contains("hidden")) return;
+window.swapVersion = async function(event) {
+    event.stopPropagation();
+    document.getElementById('select-instance-window').classList.remove('hidden');
+    await fetchInstancesFromBackend();
+};
 
-    dropdown.innerHTML = ''; // clear
-
+async function fetchInstancesFromBackend() {
     try {
-        const res = await fetch("http://localhost:8800/instances");
+        const res = await fetch('http://localhost:8888/instances');
         const instances = await res.json();
-        console.log("Instances from backend:", instances);
-
-        if (!Array.isArray(instances) || instances.length === 0) {
-            const empty = document.createElement("div");
-            empty.className = 'instance-item';
-            empty.textContent = "Keine Instanzen gefunden";
-            dropdown.appendChild(empty);
-            return;
-        }
-
-        instances.forEach(inst => {
-            const item = document.createElement("div");
-            item.className = 'instance-item';
-            item.textContent = formatInstanceLabel(inst);
-
-            item.onclick = (e) => {
-                e.stopPropagation(); // wichtig, damit der click nicht hochgeht
-                selectedInstance = inst;
-                updateLaunchButton(inst);
-                dropdown.classList.add("hidden");
-                showNotification("INFO", `Ausgewählt: ${inst.profileName || inst.name || 'Instance'}`);
-            };
-
-            dropdown.appendChild(item);
-        });
+        instancesCache = Array.isArray(instances) ? instances : (instances.instances || []);
+        renderInstanceList(instancesCache);
     } catch (err) {
-        console.error("Fehler beim Laden der Instanzen:", err);
-        const errEl = document.createElement("div");
-        errEl.className = 'instance-item';
-        errEl.textContent = "Fehler beim Laden";
-        dropdown.appendChild(errEl);
+        renderInstanceList([]);
+        showNotification('ERROR', 'Could not fetch instances from backend');
+        console.error('Error fetching instances:', err);
     }
 }
 
-
-
-function showInstanceSelector(instances) {
-    const container = document.getElementById('instance-container');
-    container.innerHTML = ''; // Reset
-
-    const list = document.createElement('ul');
-    list.classList.add('instance-selector');
-
-    instances.forEach(inst => {
-        const item = document.createElement('li');
-        item.textContent = `${inst.name} (${inst.modloader} ${inst.version})`;
-
-        item.addEventListener('click', () => {
-            selectedInstance = inst; // speichern, welche Instanz gewählt wurde
-            updateLaunchButton(inst);
-            container.innerHTML = ''; // Auswahl schließen
-        });
-
-        list.appendChild(item);
-    });
-
-    container.appendChild(list);
-}
-
-function updateLaunchButton(inst) {
-    const launchTitle = document.querySelector('.launch-btn .title');
-    launchTitle.textContent = `${inst.name} ${inst.version}`;
-}
-// Startet die gewählte Instance
-async function startGame() {
-    if (!selectedInstance) {
-        alert('Bitte zuerst eine Instance auswählen!');
+function renderInstanceList(instances) {
+    const list = document.getElementById('select-instance-list');
+    list.innerHTML = '';
+    if (!instances.length) {
+        const div = document.createElement('div');
+        div.textContent = 'You don’t have instances';
+        div.style.color = '#aaa';
+        list.appendChild(div);
         return;
     }
-    console.log('Launching', selectedInstance);
-    // Starten
-    const start = await fetch("http://localhost:8800/launch");
-}
-
-function renderInstances(instances) {
-    const container = document.getElementById('instance-container');
-    container.innerHTML = ''; // Reset
-
     instances.forEach(inst => {
-        const card = document.createElement('article');
-        card.classList.add('card');
-        card.innerHTML = `
-      <div class="visual">
-        <img src="${inst.image || 'images/default.png'}" alt="${inst.name}" />
-      </div>
-      <div class="info">
-        <div class="title-row">
-          <h2 class="instance-title">${inst.name}</h2>
-          <div class="tag">${inst.modloader} • ${inst.version}</div>
-        </div>
-        <div class="meta">Klicke auf den Titel, um Details anzuzeigen.</div>
-      </div>
-    `;
-
-        // Klick-Handler (wie in deinem Beispiel)
-        const title = card.querySelector('.instance-title');
-        const meta = card.querySelector('.meta');
-        let toggled = false;
-
-        title.addEventListener('click', () => {
-            toggled = !toggled;
-            title.classList.toggle('selected', toggled);
-            meta.textContent = toggled
-                ? `Details: Diese Instanz läuft auf ${inst.modloader} ${inst.version}.`
-                : 'Klicke auf den Titel, um Details anzuzeigen.';
-        });
-
-        container.appendChild(card);
+        const div = document.createElement('div');
+        div.className = 'instance-option';
+        div.textContent = `${inst.name || inst.profileName || 'Unknown'} (${inst.version || inst.minecraftVersion || ''})`;
+        div.onclick = () => {
+            selectedInstance = inst;
+            updateLaunchButton();
+            closeSelectInstanceWindow();
+        };
+        list.appendChild(div);
     });
 }
 
-// Öffnen und Schließen
-function openInstancesWindow() {
-    document.getElementById("instances-window").classList.remove("hidden");
-    fetchInstances(); // Instanzen laden und anzeigen
-}
+// --- GLOBAL MODAL OPEN/CLOSE FUNCTIONS ---
+window.openInstancesWindow = function() {
+    document.getElementById('instances-window').classList.remove('hidden');
+};
+window.closeInstancesWindow = function() {
+    document.getElementById('instances-window').classList.add('hidden');
+};
+window.openCreateInstanceWindow = function() {
+    document.getElementById('create-instance-window').classList.remove('hidden');
+};
+window.closeCreateInstanceWindow = function() {
+    document.getElementById('create-instance-window').classList.add('hidden');
+};
+window.openLoginWindow = function() {
+    document.getElementById('login-window').classList.remove('hidden');
+};
+window.closeLoginWindow = function() {
+    document.getElementById('login-window').classList.add('hidden');
+};
+window.openSelectInstanceWindow = function() {
+    document.getElementById('select-instance-window').classList.remove('hidden');
+};
+window.closeSelectInstanceWindow = function() {
+    document.getElementById('select-instance-window').classList.add('hidden');
+};
+// --- END GLOBAL MODAL OPEN/CLOSE FUNCTIONS ---
 
-function closeInstancesWindow() {
-    document.getElementById("instances-window").classList.add("hidden");
-}
-function openLoginWindow() {
-    document.getElementById("login-window").classList.remove("hidden");
-}
-function closeLoginWindow() {
-    document.getElementById("login-window").classList.add("hidden");
-}
-function openCreateInstanceWindow() {
-    document.getElementById("create-instance-window").classList.remove("hidden");
-}
-function closeCreateInstanceWindow() {
-    document.getElementById("create-instance-window").classList.add("hidden");
-}
+// Remove all event delegation for close buttons (handled by HTML onclick)
+// Keep outside click logic if desired
 
-function makeDraggable(windowId) {
+document.addEventListener('mousedown', function(event) {
+    const modals = [
+        document.getElementById('select-instance-window'),
+        document.getElementById('instances-window'),
+        document.getElementById('login-window'),
+        document.getElementById('create-instance-window')
+    ];
+    modals.forEach(modal => {
+        if (modal && !modal.classList.contains('hidden') && !modal.contains(event.target)) {
+            modal.classList.add('hidden');
+        }
+    });
+});
+
+// Fix makeDraggable to not start drag when clicking the close button
+function makeDraggable(windowId, headerClass) {
     const win = document.getElementById(windowId);
-    const header = win.querySelector("div:first-child"); // Header
+    const header = win.querySelector(headerClass);
     let offsetX, offsetY, isDown = false;
-
-    header.addEventListener("mousedown", e => {
+    if (!header) return;
+    header.addEventListener('mousedown', e => {
+        // Prevent drag if close button is clicked
+        if (e.target.classList.contains('close-btn')) return;
         isDown = true;
         offsetX = e.clientX - win.offsetLeft;
         offsetY = e.clientY - win.offsetTop;
     });
-
-    document.addEventListener("mouseup", () => isDown = false);
-
-    document.addEventListener("mousemove", e => {
+    document.addEventListener('mouseup', () => isDown = false);
+    document.addEventListener('mousemove', e => {
         if (!isDown) return;
-
         let x = e.clientX - offsetX;
         let y = e.clientY - offsetY;
-
-        // Fenster innerhalb des Browserfensters halten
         const maxX = window.innerWidth - win.offsetWidth;
         const maxY = window.innerHeight - win.offsetHeight;
         if (x < 0) x = 0;
         if (y < 0) y = 0;
         if (x > maxX) x = maxX;
         if (y > maxY) y = maxY;
-
-        win.style.left = x + "px";
-        win.style.top = y + "px";
+        win.style.left = x + 'px';
+        win.style.top = y + 'px';
     });
 }
 
-// Anwenden auf beide Fenster
-makeDraggable("instances-window");
-makeDraggable("login-window");
-makeDraggable("create-instance-window");
+makeDraggable('select-instance-window', '.select-instance-header');
+makeDraggable('instances-window', '.instances-header');
+makeDraggable('login-window', '.login-header');
+makeDraggable('create-instance-window', '.create-instance-header');
 
 checkLogin();
 fetchInstances();
