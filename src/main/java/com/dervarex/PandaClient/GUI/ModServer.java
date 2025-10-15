@@ -9,6 +9,7 @@ import com.dervarex.PandaClient.Auth.AuthManager;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -23,12 +24,50 @@ public class ModServer extends NanoHTTPD {
 
         // --- /isLoggedIn ---
         if ("/isLoggedIn".equals(uri)) {
-            String json = "{\"loggedIn\":" + AuthManager.hasSessionSaved() + "}";
+            boolean loggedIn = AuthManager.getUser() != null;
+            boolean hasSaved = AuthManager.hasSessionSaved();
+            String json = new JSONObject()
+                    .put("loggedIn", loggedIn)
+                    .put("hasSaved", hasSaved)
+                    .toString();
             return jsonResponse(json);
         }
         // --- /launch ---
         if ("/launch".equals(uri)) {
-            
+            try {
+                Map<String, java.util.List<String>> params = session.getParameters();
+                String profileName = null;
+                if (params != null) {
+                    if (params.containsKey("profileName") && !params.get("profileName").isEmpty()) profileName = params.get("profileName").get(0);
+                    else if (params.containsKey("name") && !params.get("name").isEmpty()) profileName = params.get("name").get(0);
+                }
+                if (profileName == null || profileName.isBlank()) {
+                    return jsonResponse(new JSONObject().put("success", false).put("error", "Missing profileName parameter").toString());
+                }
+                AuthManager.User user = AuthManager.getUser();
+                if (user == null) {
+                    return jsonResponse(new JSONObject().put("success", false).put("error", "Not logged in").toString());
+                }
+                ProfileManagement pm = new ProfileManagement();
+                java.util.List<Profile> profiles = pm.getProfiles();
+                Profile target = null;
+                for (Profile p : profiles) {
+                    if (profileName.equalsIgnoreCase(p.getProfileName())) { target = p; break; }
+                }
+                if (target == null) {
+                    return jsonResponse(new JSONObject().put("success", false).put("error", "Profile not found: " + profileName).toString());
+                }
+                // Instanzordner ermitteln (gleiche Logik wie in createProfile)
+                File instanceFolder = new File(new File(com.dervarex.PandaClient.utils.file.getPandaClientFolder.getPandaClientFolder(), "instances"), target.getProfileName());
+                // Spiel starten (launchMc = true)
+                MinecraftLauncher.LaunchMinecraft(target.getVersionId(), user.getUsername(), user.getUuid(), user.getAccessToken(), instanceFolder, true);
+                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.INFO, "Launching " + target.getProfileName());
+                return jsonResponse(new JSONObject().put("success", true).put("launched", target.getProfileName()).toString());
+            } catch (Exception e) {
+                e.printStackTrace();
+                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Launch failed: " + e.getMessage());
+                return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
+            }
         }
         // --- /instances ---
         if ("/instances".equals(uri)) {
@@ -43,7 +82,7 @@ public class ModServer extends NanoHTTPD {
                 int contentLength = Integer.parseInt(session.getHeaders().getOrDefault("content-length", "0"));
                 byte[] buffer = new byte[contentLength];
                 session.getInputStream().read(buffer, 0, contentLength);
-                String body = new String(buffer, "UTF-8");
+                String body = new String(buffer, StandardCharsets.UTF_8);
 
                 // JSON parsen
                 JSONObject params = new JSONObject(body);
@@ -65,51 +104,68 @@ public class ModServer extends NanoHTTPD {
                 return jsonResponse("{\"success\":true}");
             } catch (Exception e) {
                 e.printStackTrace();
-                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Error while creating Instance" + e.getMessage()/* + " (ModServer /create-instance)"*/);
-                return jsonResponse("{\"success\":false, \"error\":\"" + e.getMessage() + "\"}");
+                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Error while creating Instance" + e.getMessage());
+                return jsonResponse(new JSONObject()
+                        .put("success", false)
+                        .put("error", e.getMessage())
+                        .toString());
             }
         }
         // --- /loginWithToken ---
         if ("/loginWithToken".equals(uri)) {
             try {
-                AuthManager.loginWithSavedSession();
-                return jsonResponse("{\"success\":true}");
+                AuthManager.User user = AuthManager.loginWithSavedSession();
+                boolean ok = user != null;
+                if (!ok) {
+                    NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Error while trying to login with saved Session");
+                }
+                return jsonResponse(new JSONObject().put("success", ok).toString());
             } catch (Exception e) {
                 NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Error while trying to login with saved Session: " + e.getMessage());
-                throw new RuntimeException(e);
+                return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
             }
         }
-//        // --- /select-instance ---
-//        if (uri.startsWith("/select-instance")) {
-//            Map<String, String> params = session.getParms();
-//            String id = params.get("id");
-//
-//            // ID speichern (z. B. in ProfileManagement oder statische Variable)
-//            ProfileManagement pm = new ProfileManagement();
-//            pm.loadProfile(id);
-//
-//            String json = "{\"success\":true, \"selected\":\"" + id + "\"}";
-//            return jsonResponse(json);
-//        }
-
-        // --- /login ---
-        if ("/login".equals(uri)) {
-            boolean worked = false;
-            try {
-                if (AuthManager.hasSessionSaved()) {
-                    AuthManager.loginWithSavedSession();
-                } else {
-                    AuthManager.login();
-                    NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.INFO, "Please login with your Minecraft account via Device Code");
-                }
-                worked = true;
-            } catch (Exception e) {
-                worked = false;
-                throw new RuntimeException(e);
-            }
-
-            String json = "{\"success\":" + worked + "}";
+        if("/isOnline".equals(uri)) {
+            boolean online = com.dervarex.PandaClient.utils.NetUtils.NetUtils.isOnline();
+            String json = new JSONObject()
+                    .put("online", online)
+                    .toString();
             return jsonResponse(json);
+        }
+        // --- /login (start or use saved) ---
+        if ("/login".equals(uri)) {
+            try {
+                // if a saved session exists, try to use it first
+                if (AuthManager.hasSessionSaved()) {
+                    AuthManager.User user = AuthManager.loginWithSavedSession();
+                    return jsonResponse(new JSONObject()
+                            .put("success", user != null)
+                            .put("usedSaved", true)
+                            .toString());
+                } else {
+                    // start device code login asynchronously
+                    String stateJson = AuthManager.startDeviceCodeLoginAsync();
+                    // ensure there's always a success flag for backward compatibility
+                    JSONObject state = new JSONObject(stateJson);
+                    boolean success = "SUCCESS".equalsIgnoreCase(state.optString("status"));
+                    state.put("success", success);
+                    return jsonResponse(state.toString());
+                }
+            } catch (Exception e) {
+                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Error while trying to login: " + e.getMessage());
+                // don't throw; return JSON error
+                JSONObject err = new JSONObject()
+                        .put("success", false)
+                        .put("error", e.getMessage());
+                return jsonResponse(err.toString());
+            }
+        }
+
+        // --- /login/status ---
+        if ("/login/status".equals(uri)) {
+            JSONObject state = new JSONObject(AuthManager.getLoginStateJson());
+            state.put("success", "SUCCESS".equalsIgnoreCase(state.optString("status")));
+            return jsonResponse(state.toString());
         }
 
         // --- Not Found ---

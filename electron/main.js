@@ -3,7 +3,12 @@ const path = require("path");
 const fs = require("fs");
 
 function createWindow() {
-    const iconPath = path.join(__dirname, "images", "logo.ico");
+    let iconPath;
+    if (process.platform === "win32") {
+        iconPath = path.join(__dirname, "images", "logo.ico");
+    } else {
+        iconPath = path.join(__dirname, "images", "logo.png");
+    }
     const windowOptions = {
         width: 800,
         height: 600,

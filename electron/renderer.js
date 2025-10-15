@@ -9,7 +9,7 @@ document.getElementById("create-instance-form").addEventListener("submit", async
     const data = {
         name: formData.get("name") || "",
         version: formData.get("version") || "",
-        modloader: formData.get("instance-type") || ""
+        modloader: formData.get("modloader") || ""
     };
 
     console.log(data);
@@ -85,46 +85,102 @@ async function checkLogin() {
         const data = await resp.json();
         console.log("isLoggedIn Antwort:", data);
 
-        if (!data.loggedIn) {
-            openLoginWindow();
-            console.log("Not logged in.");
-
-            document.querySelector('.login-form').addEventListener('submit', async (e) => {
-                e.preventDefault();
-
-
-
-                try {
-                    // Port auf 8800
-                    const respLogin = await fetch(`http://localhost:8800/login`);
-                    const result = await respLogin.json();
-                    console.log("Login Result:", result);
-
-                    if (result.success) {
-                        closeLoginWindow();
-                    } else {
-                        alert("Login failed!");
-                    }
-                } catch (err) {
-                    console.error("Fehler beim Login:", err);
+        if (data.loggedIn) {
+            console.log("Already logged in.");
+            return;
+        }
+        // Try saved session first if available
+        if (data.hasSaved) {
+            try {
+                const respSaved = await fetch("http://localhost:8800/loginWithToken");
+                const resSaved = await respSaved.json();
+                if (resSaved.success) {
+                    closeLoginWindow();
+                    return;
                 }
-            });
-        } else {
-            console.log("Logging in with token.");
-            try{
-                const response = await fetch("http://localhost:8800/loginWithToken");
-                const answer = await response.json();
-            } catch (err) {
-                console.error("Fehler beim Abrufen von isLoggedIn(hasTokenSaved=true): ", err);
+            } catch (e) {
+                console.warn("loginWithToken failed, falling back to device code:", e);
             }
+        }
+        openLoginWindow();
+        console.log("Not logged in.");
+
+
+
+        const form = document.querySelector('.login-form');
+        if (!form._handlerAttached) {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                startDeviceCodeLogin();
+            });
+            form._handlerAttached = true;
         }
     } catch (err) {
         console.error("Fehler beim Abrufen von isLoggedIn:", err);
     }
 }
+
+let loginStatusPoller = null;
+async function startDeviceCodeLogin() {
+    try {
+        const resp = await fetch(`http://localhost:8800/login`);
+        const state = await resp.json();
+        console.log("/login state:", state);
+        updateLoginUI(state);
+        // start polling until SUCCESS or ERROR
+        if (loginStatusPoller) clearInterval(loginStatusPoller);
+        loginStatusPoller = setInterval(pollLoginStatus, 2000);
+    } catch (e) {
+        console.error("Start login failed:", e);
+        showNotification('ERROR', 'Could not start login');
+    }
+}
+
+async function pollLoginStatus() {
+    try {
+        const resp = await fetch(`http://localhost:8800/login/status`);
+        const state = await resp.json();
+        console.log("/login/status:", state);
+        updateLoginUI(state);
+        if (state.status === 'SUCCESS') {
+            clearInterval(loginStatusPoller);
+            loginStatusPoller = null;
+            showNotification('INFO', `Logged in as ${state.username || ''}`);
+            closeLoginWindow();
+        } else if (state.status === 'ERROR') {
+            clearInterval(loginStatusPoller);
+            loginStatusPoller = null;
+            showNotification('ERROR', state.message || 'Login failed');
+        }
+    } catch (e) {
+        console.error("Polling login status failed:", e);
+    }
+}
+
+function updateLoginUI(state) {
+    const statusText = document.getElementById('login-status-text');
+    const codeBox = document.getElementById('device-code-box');
+    const codeEl = document.getElementById('device-code');
+    const linkEl = document.getElementById('verify-link');
+    if (!statusText) return;
+
+    const s = state.status || (state.success ? 'SUCCESS' : 'IDLE');
+    statusText.textContent = state.message || (s === 'PENDING' ? 'Waiting for authorization…' : 'Starting login…');
+    if (state.userCode) {
+        codeBox.style.display = '';
+        codeEl.textContent = state.userCode;
+        if (state.directVerificationUri) {
+            linkEl.href = state.directVerificationUri;
+        } else if (state.verificationUri) {
+            linkEl.href = state.verificationUri;
+        }
+    }
+}
+
 async function fetchInstances() {
     const res = await fetch('http://localhost:8800/instances');
     const instances = await res.json();
+    console.log('[instances][raw]', instances);
     // renderInstances(instances); // Commented out to avoid error
     return instances;
 }
@@ -134,14 +190,29 @@ function renderInstances(instances) {
     console.log('renderInstances called (stub)', instances);
 }
 
+// Normalisierung: Backend -> vereinheitlichte Struktur
+function normalizeInstance(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const loaderRaw = raw.loader || raw.modloader || '';
+    // Loader hübscher machen (z.B. FABRIC -> Fabric)
+    const loaderPretty = loaderRaw ? loaderRaw.charAt(0) + loaderRaw.slice(1).toLowerCase() : '';
+    return {
+        original: raw,
+        name: raw.profileName || raw.name || raw.title || 'Instance',
+        version: raw.versionId || raw.version || raw.minecraftVersion || '',
+        loader: loaderPretty || 'Unknown',
+        imagePath: raw.profileImagePath || raw.profileImage || raw.image || 'images/default.png'
+    };
+}
+function normalizeInstances(arr) {
+    if (!Array.isArray(arr)) return [];
+    return arr.map(normalizeInstance).filter(Boolean);
+}
+
 function formatInstanceLabel(inst) {
-    // robust gegen verschiedene Feldnamen
-    const name = inst.profileName || inst.name || inst.title || "Instance";
-    let loader = inst.loader || inst.modloader || "";
-    // friendly mapping (falls backend "UNK" liefert)
-    if (!loader || /^UNK|UNKNOWN$/i.test(loader)) loader = "Vanilla";
-    const version = inst.versionId || inst.version || "";
-    return `${name} (${loader} ${version})`.trim();
+    // inst kann bereits normalisiert sein; falls nicht, normalisieren
+    const n = inst.name ? inst : normalizeInstance(inst);
+    return `${n.name} (${n.loader} ${n.version})`.trim();
 }
 
 // --- Instance Selection Logic ---
@@ -156,9 +227,12 @@ window.swapVersion = async function(event) {
 
 async function fetchInstancesFromBackend() {
     try {
-        const res = await fetch('http://localhost:8888/instances');
-        const instances = await res.json();
-        instancesCache = Array.isArray(instances) ? instances : (instances.instances || []);
+        const res = await fetch('http://localhost:8800/instances');
+        const raw = await res.json();
+        console.log('[instances][raw fetchInstancesFromBackend]', raw);
+        const arr = Array.isArray(raw) ? raw : (raw.instances || []);
+        instancesCache = normalizeInstances(arr);
+        console.log('[instances][normalized]', instancesCache);
         renderInstanceList(instancesCache);
     } catch (err) {
         renderInstanceList([]);
@@ -169,6 +243,7 @@ async function fetchInstancesFromBackend() {
 
 function renderInstanceList(instances) {
     const list = document.getElementById('select-instance-list');
+    if (!list) return;
     list.innerHTML = '';
     if (!instances.length) {
         const div = document.createElement('div');
@@ -177,12 +252,13 @@ function renderInstanceList(instances) {
         list.appendChild(div);
         return;
     }
-    instances.forEach(inst => {
+    instances.forEach(nInst => {
+        const inst = nInst.name ? nInst : normalizeInstance(nInst);
         const div = document.createElement('div');
         div.className = 'instance-option';
-        div.textContent = `${inst.name || inst.profileName || 'Unknown'} (${inst.version || inst.minecraftVersion || ''})`;
+        div.textContent = formatInstanceLabel(inst);
         div.onclick = () => {
-            selectedInstance = inst;
+            selectedInstance = inst; // Speichere normalisierte Instanz
             updateLaunchButton();
             closeSelectInstanceWindow();
         };
@@ -190,12 +266,9 @@ function renderInstanceList(instances) {
     });
 }
 
-// --- GLOBAL MODAL OPEN/CLOSE FUNCTIONS ---
-window.openInstancesWindow = function() {
-    document.getElementById('instances-window').classList.remove('hidden');
-};
 window.closeInstancesWindow = function() {
-    document.getElementById('instances-window').classList.add('hidden');
+    const el = document.getElementById('instances-window');
+    if (el) el.classList.add('hidden');
 };
 window.openCreateInstanceWindow = function() {
     document.getElementById('create-instance-window').classList.remove('hidden');
@@ -217,17 +290,13 @@ window.closeSelectInstanceWindow = function() {
 };
 // --- END GLOBAL MODAL OPEN/CLOSE FUNCTIONS ---
 
-// Remove all event delegation for close buttons (handled by HTML onclick)
-// Keep outside click logic if desired
-
 document.addEventListener('mousedown', function(event) {
-    const modals = [
+    const closableModals = [
         document.getElementById('select-instance-window'),
         document.getElementById('instances-window'),
-        document.getElementById('login-window'),
         document.getElementById('create-instance-window')
     ];
-    modals.forEach(modal => {
+    closableModals.forEach(modal => {
         if (modal && !modal.classList.contains('hidden') && !modal.contains(event.target)) {
             modal.classList.add('hidden');
         }
@@ -263,10 +332,55 @@ function makeDraggable(windowId, headerClass) {
     });
 }
 
+function updateLaunchButton() {
+    try {
+        const titleEl = document.querySelector('.launch-btn .title');
+        const subEl = document.querySelector('.launch-btn .subtitle');
+        if (!titleEl || !subEl) return;
+        if (selectedInstance) {
+            const name = selectedInstance.name || selectedInstance.profileName || 'Instance';
+            const ver = selectedInstance.version || selectedInstance.minecraftVersion || '';
+            const loader = selectedInstance.loader || selectedInstance.modloader || '';
+
+            console.log("Selected instance:", selectedInstance);
+            console.log("Name:", name, "Version:", ver, "Loader:", loader);
+            // Trim to avoid extra spaces if ver or loader are empty
+
+            titleEl.textContent = `Launch ${ver || ''}`.trim();
+            subEl.textContent = `${name} ${loader} ${ver}` .trim();
+        }
+    } catch (e) {
+        console.warn('updateLaunchButton failed:', e);
+    }
+}
+
+async function startGame() {
+    if (!selectedInstance) {
+        showNotification('WARNING', 'Please select an instance first (click the swap icon).');
+        return;
+    }
+    try {
+        const inst = selectedInstance.name ? selectedInstance : normalizeInstance(selectedInstance);
+        const params = new URLSearchParams();
+        if (inst && inst.name) params.set('profileName', inst.name); // Backend erwartet profileName
+        const url = `http://localhost:8800/launch${params.toString() ? ('?' + params.toString()) : ''}`;
+        console.log('[launch][request]', url);
+        const resp = await fetch(url);
+        const data = await resp.json().catch(() => ({}));
+        console.log('[launch][response]', data);
+        showNotification(data.success ? 'INFO' : 'ERROR', data.success ? `Launching ${inst.name}` : (data.error || 'Launch failed'));
+    } catch (e) {
+        console.error('Launch failed:', e);
+        showNotification('ERROR', 'Launch failed');
+    }
+}
+
+checkLogin();
+console.log("Login checked");
+
 makeDraggable('select-instance-window', '.select-instance-header');
 makeDraggable('instances-window', '.instances-header');
 makeDraggable('login-window', '.login-header');
 makeDraggable('create-instance-window', '.create-instance-header');
 
-checkLogin();
 fetchInstances();
