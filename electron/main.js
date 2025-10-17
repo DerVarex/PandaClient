@@ -1,6 +1,7 @@
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const http = require("http");
 
 function createWindow() {
     let iconPath;
@@ -15,7 +16,8 @@ function createWindow() {
         frame: false,
         webPreferences: {
             nodeIntegration: true,
-            contextIsolation: true
+            contextIsolation: true,
+            preload: path.join(__dirname, 'preload.js')
         }
     };
 
@@ -34,8 +36,27 @@ function createWindow() {
         console.error("Failed to load index.html:", err);
     });
 
-    win.webContents.openDevTools();
+    // Open DevTools for debugging
+//    win.webContents.openDevTools();
 }
+
+// Try to shut down the Java backend gracefully before quitting Electron
+function shutdownBackend(timeoutMs = 1500) {
+    return new Promise((resolve) => {
+        let settled = false;
+        const req = http.get("http://127.0.0.1:8800/shutdown", (res) => {
+            res.on("data", () => {});
+            res.on("end", () => { if (!settled) { settled = true; resolve(); } });
+        });
+        req.on("error", () => { if (!settled) { settled = true; resolve(); } });
+        req.setTimeout(timeoutMs, () => { try { req.destroy(); } finally { if (!settled) { settled = true; resolve(); } } });
+    });
+}
+
+// IPC from renderer to quit app explicitly (works on macOS too)
+ipcMain.on('app-quit', () => {
+    shutdownBackend(1500).finally(() => app.quit());
+});
 
 app.whenReady().then(() => {
     createWindow();
@@ -46,5 +67,7 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") app.quit();
+    if (process.platform !== "darwin") {
+        shutdownBackend(1500).finally(() => app.quit());
+    }
 });

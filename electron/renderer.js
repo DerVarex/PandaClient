@@ -71,12 +71,19 @@ window.showNotification = function(type, message) {
     toast.style.transform = "translateX(0)";
 }, 10);
 
+    let timeout;
+
+if(type === "ERROR") {
+    timeout = 10000;
+} else {
+    timeout = 4000;
+}
     // Slide-out und entfernen nach 4 Sekunden
     setTimeout(() => {
     toast.style.opacity = "0";
     toast.style.transform = "translateX(100%)";
     setTimeout(() => container.removeChild(toast), 500);
-}, 4000);
+}, timeout);
 }
 
 async function checkLogin() {
@@ -374,6 +381,16 @@ async function startGame() {
         showNotification('ERROR', 'Launch failed');
     }
 }
+window.openPandaClientFolder = async function() {
+    try {
+        await fetch("http://localhost:8800/openPandaClientFolder");
+    } catch (e) {
+        console.error("openPandaClientFolder failed:", e);
+        showNotification('ERROR', 'Could not open Panda Client folder');
+    }
+};
+
+
 
 checkLogin();
 console.log("Login checked");

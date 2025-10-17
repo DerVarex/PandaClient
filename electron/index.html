@@ -9,6 +9,9 @@
 <div id="app-container">
   <nav class="navbar">
     <button onclick="openCreateInstanceWindow()" id="plusbtn">+</button>
+      <button onclick="openPandaClientFolder()" id="openfolderbtn" style="margin-left: 5px;">
+          <img src="images/foldericon.png" alt="Open Folder" style="width: 16px; height: 16px; vertical-align: middle;">
+      </button>
   </nav>
 
   <div id="login-window" class="hidden">
@@ -82,6 +85,7 @@
     </div>
   </div>
 </div>
+<script src="js/exit.js"></script>
 <script src="renderer.js"></script>
 <script src="Websocket/8888/notification.js"></script>
 </body>

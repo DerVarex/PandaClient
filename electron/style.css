@@ -70,6 +70,14 @@ nav button {
     color: white;
     cursor: pointer;
 }
+#openfolderbtn,
+#openfolderbtn img {
+    -webkit-app-region: no-drag;
+    background: transparent;
+    border: none;
+    color: white;
+    cursor: pointer;
+}
 #openLoginWindow {
     -webkit-app-region: no-drag;
     margin-left: 5px;

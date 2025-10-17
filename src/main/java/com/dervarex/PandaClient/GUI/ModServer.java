@@ -9,9 +9,12 @@ import com.dervarex.PandaClient.Auth.AuthManager;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+
+import static com.dervarex.PandaClient.utils.file.getPandaClientFolder.getPandaClientFolder;
 
 public class ModServer extends NanoHTTPD {
     public ModServer(int port) {
@@ -21,7 +24,23 @@ public class ModServer extends NanoHTTPD {
     @Override
     public Response serve(IHTTPSession session) {
         String uri = session.getUri();
-
+        // --- /openPandaClientFolder ---
+        if ("/openPandaClientFolder".equals(uri)) {
+            try {
+                java.awt.Desktop.getDesktop().open(getPandaClientFolder());
+                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.INFO, "PandaClient folder opened");
+                return jsonResponse(new JSONObject()
+                        .put("success", true)
+                        .toString());
+            } catch (IOException e) {
+                e.printStackTrace();
+                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Could not open PandaClient folder: " + e.getMessage());
+                return jsonResponse(new JSONObject()
+                        .put("success", false)
+                        .put("error", e.getMessage())
+                        .toString());
+            }
+        }
         // --- /isLoggedIn ---
         if ("/isLoggedIn".equals(uri)) {
             boolean loggedIn = AuthManager.getUser() != null;
@@ -58,7 +77,7 @@ public class ModServer extends NanoHTTPD {
                     return jsonResponse(new JSONObject().put("success", false).put("error", "Profile not found: " + profileName).toString());
                 }
                 // Instanzordner ermitteln (gleiche Logik wie in createProfile)
-                File instanceFolder = new File(new File(com.dervarex.PandaClient.utils.file.getPandaClientFolder.getPandaClientFolder(), "instances"), target.getProfileName());
+                File instanceFolder = new File(new File(getPandaClientFolder(), "instances"), target.getProfileName());
                 // Spiel starten (launchMc = true)
                 MinecraftLauncher.LaunchMinecraft(target.getVersionId(), user.getUsername(), user.getUuid(), user.getAccessToken(), instanceFolder, true);
                 NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.INFO, "Launching " + target.getProfileName());
@@ -166,6 +185,27 @@ public class ModServer extends NanoHTTPD {
             JSONObject state = new JSONObject(AuthManager.getLoginStateJson());
             state.put("success", "SUCCESS".equalsIgnoreCase(state.optString("status")));
             return jsonResponse(state.toString());
+        }
+
+        // --- /shutdown ---
+        if ("/shutdown".equals(uri)) {
+            System.out.println("Shutting down PandaClient");
+            Response res = jsonResponse(new JSONObject()
+                    .put("success", true)
+                    .put("message", "Shutting down")
+                    .toString());
+            try {
+                var ns = NotificationServerStart.getNotificationServer();
+                if (ns != null) {
+                    ns.showNotification(NotificationServer.NotificationType.INFO, "Shutting down PandaClient backend…");
+                }
+            } catch (Throwable ignored) {}
+            new Thread(() -> {
+                try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+                try { stop(); } catch (Throwable ignored) {}
+                System.exit(0);
+            }, "ShutdownThread").start();
+            return res;
         }
 
         // --- Not Found ---
