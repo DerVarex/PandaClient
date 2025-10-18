@@ -13,18 +13,18 @@ public class MainGUI {
         ModServer server = new ModServer(8800);
         try {
             server.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
-            System.out.println("Server läuft auf http://localhost:8800");
+            System.out.println("Server running on http://localhost:8800");
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        // Electron starten
+        // Start electron
         try {
             String npmCommand = System.getProperty("os.name").toLowerCase().contains("win") ? "npm.cmd" : "npm";
             ProcessBuilder pb = new ProcessBuilder(npmCommand, "start");
             pb.directory(new java.io.File("electron"));
             pb.inheritIO();
             pb.start();
-            System.out.println("Electron gestartet");
+            System.out.println("Electron started");
         } catch (Exception e) {
             e.printStackTrace();
         }

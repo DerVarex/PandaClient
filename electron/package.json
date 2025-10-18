@@ -11,7 +11,9 @@
   "license": "",
   "description": "GUI for PandaClient | made by dervarex",
   "devDependencies": {
-    "electron": "^37.5.1",
     "electron-reload": "^2.0.0-alpha.1"
+  },
+  "dependencies": {
+    "electron": "^38.2.2"
   }
 }
