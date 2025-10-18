@@ -1,16 +1,16 @@
 package com.dervarex.PandaClient.Minecraft;
 
-import com.dervarex.PandaClient.utils.OS.OSUtil;
+import com.dervarex.PandaClient.Minecraft.logger.LogWindow;
 import com.dervarex.PandaClient.utils.file.getPandaClientFolder;
 import com.google.gson.*;
 
 import java.io.*;
 import java.net.URL;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
+import java.util.function.Consumer;
 
 public class MinecraftLauncher {
 
@@ -60,12 +60,16 @@ public class MinecraftLauncher {
             // Starten
             if (launchMc) {
                 System.out.println("🚀 Starte Minecraft...");
+                // create a LogWindow and pass it to the starter so each MC line is forwarded with levels
+                LogWindow logWindow = new LogWindow();
                 startMinecraft(ASSETS_DIR, versionInfo, username, uuid, accessToken,
-                        LIB_DIR, INSTANCE_DIR.getPath());
+                        LIB_DIR, INSTANCE_DIR.getPath(), logWindow);
             }
         } catch (Exception e) {
-            System.err.println("❌ Fehler beim Starten von Minecraft:");
-            e.printStackTrace();
+            System.err.println("❌ Fehler beim Starten von Minecraft: " + e.getMessage());
+            StringWriter sw = new StringWriter();
+            e.printStackTrace(new PrintWriter(sw));
+            System.err.println(sw.toString());
         }
     }
 
@@ -121,7 +125,7 @@ public class MinecraftLauncher {
                 File libFile = new File(LIB_DIR, path);
 
                 if (!libFile.exists()) {
-                    libFile.getParentFile().mkdirs();
+                    Files.createDirectories(libFile.getParentFile().toPath());
                     try (InputStream in = new URL(url).openStream();
                          FileOutputStream out = new FileOutputStream(libFile)) {
                         byte[] buffer = new byte[4096];
@@ -140,7 +144,7 @@ public class MinecraftLauncher {
             String assetUrl = assetIndex.get("url").getAsString();
             String assetId = assetIndex.get("id").getAsString();
             File assetIndexFile = new File(ASSETS_DIR + "/indexes", assetId + ".json");
-            assetIndexFile.getParentFile().mkdirs();
+            Files.createDirectories(assetIndexFile.getParentFile().toPath());
             downloadFile(assetUrl, assetIndexFile.getAbsolutePath());
             System.out.println("🖼️ Asset index downloaded: " + assetId);
             downloadAssets(assetIndexFile, new File(ASSETS_DIR, "objects"));
@@ -153,9 +157,9 @@ public class MinecraftLauncher {
                                        String uuid,
                                        String accessToken,
                                        File LIB_DIR,
-                                       String INSTANCE_DIR) throws IOException {
+                                       String INSTANCE_DIR,
+                                       LogWindow logWindow) throws IOException {
 
-        OSUtil.OS os = OSUtil.getOS();
         List<String> command = new ArrayList<>();
         command.add("java");
         command.add("-Xmx2G");
@@ -194,7 +198,40 @@ public class MinecraftLauncher {
         command.add(assetIndex.get("id").getAsString());
 
         System.out.println("Start args: " + command);
-        new ProcessBuilder(command).directory(LIB_DIR).inheritIO().start();
+        Process process = new ProcessBuilder(command).directory(LIB_DIR).start();
+
+        // Forward stdout -> parsed level
+        new Thread(() -> streamToLogger(process.getInputStream(), line -> {
+            String lvl = parseLogLevel(line);
+            if (logWindow != null) logWindow.log(lvl, line);
+            else System.out.println("[" + lvl + "] " + line);
+        }), "mc-stdout-reader").start();
+
+        // Forward stderr -> ERROR
+        new Thread(() -> streamToLogger(process.getErrorStream(), line -> {
+            if (logWindow != null) logWindow.log("ERROR", line);
+            else System.err.println("[ERROR] " + line);
+        }), "mc-stderr-reader").start();
+    }
+
+    // Helper to read a stream line-by-line and forward to logger
+    private static void streamToLogger(InputStream in, Consumer<String> logger) {
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(in))) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                logger.accept(line);
+            }
+        } catch (IOException ignored) {}
+    }
+
+    // Simple heuristic to determine log level from a line
+    private static String parseLogLevel(String line) {
+        if (line == null) return "INFO";
+        String up = line.toUpperCase(Locale.ROOT);
+        if (up.contains("[ERROR]") || up.contains(" ERROR ") || up.contains("EXCEPTION") || up.contains("TRACE")) return "ERROR";
+        if (up.contains("[WARN]") || up.contains(" WARN ") || up.contains("[WARNING]")) return "WARN";
+        if (up.contains("[INFO]") || up.contains(" INFO ") || up.contains("FINE") || up.contains("DEBUG")) return "INFO";
+        return "INFO";
     }
 
     private static String readUrlToString(String url) throws IOException {
@@ -222,7 +259,7 @@ public class MinecraftLauncher {
             String subDir = hash.substring(0, 2);
             File outFile = new File(objectsDir, subDir + "/" + hash);
             if (outFile.exists()) continue;
-            outFile.getParentFile().mkdirs();
+            Files.createDirectories(outFile.getParentFile().toPath());
             String url = "https://resources.download.minecraft.net/" + subDir + "/" + hash;
             try (InputStream in = new URL(url).openStream()) {
                 Files.copy(in, outFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
