@@ -354,7 +354,7 @@ function updateLaunchButton() {
             // Trim to avoid extra spaces if ver or loader are empty
 
             titleEl.textContent = `Launch ${ver || ''}`.trim();
-            subEl.textContent = `${name} ${loader} ${ver}` .trim();
+            subEl.textContent = `${name} ${loader} ${ver}`.trim();
         }
     } catch (e) {
         console.warn('updateLaunchButton failed:', e);

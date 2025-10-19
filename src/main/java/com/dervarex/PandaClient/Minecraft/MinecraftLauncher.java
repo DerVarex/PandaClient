@@ -1,6 +1,7 @@
 package com.dervarex.PandaClient.Minecraft;
 
 import com.dervarex.PandaClient.Minecraft.logger.LogWindow;
+import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
 import com.dervarex.PandaClient.utils.file.getPandaClientFolder;
 import com.google.gson.*;
 
@@ -29,7 +30,7 @@ public class MinecraftLauncher {
             boolean launchMc
     ) {
         try {
-            System.out.println("Starte Minecraft-Launcher...");
+            ClientLogger.log("Starting Minecraft launcher", "INFO", "MinecraftLauncher");
             final File INSTANCE_DIR = new File(INSTANCES_BASE_DIR, instanceName.getName());
             final File LIB_DIR = new File(INSTANCE_DIR, "libraries");
             final File NATIVES_DIR = new File(INSTANCE_DIR, "natives");
@@ -43,40 +44,42 @@ public class MinecraftLauncher {
             Files.createDirectories(INSTANCE_DIR.toPath());
 
             // Version ermitteln
-            System.out.println("🔍 Suche Version...");
+            ClientLogger.log("Resolving version...", "INFO", "MinecraftLauncher");
             String versionToLaunch = version.equals("latest") ? getLatestVersion() : version;
-            System.out.println("📦 Lade Version: " + versionToLaunch);
+            ClientLogger.log("Using version: " + versionToLaunch, "INFO", "MinecraftLauncher");
 
             // Version-Info laden
             JsonObject versionInfo = getVersionInfo(versionToLaunch);
 
             // Dateien herunterladen
-            System.out.println("⬇️ Lade Minecraft-Dateien...");
+            ClientLogger.log("Downloading Minecraft files...", "INFO", "MinecraftLauncher");
             downloadMinecraftFiles(versionInfo, INSTANCE_DIR, LIB_DIR, ASSETS_DIR);
 
             // Natives (Platzhalter)
-            System.out.println("📦 Entpacke Natives (Platzhalter)");
+            ClientLogger.log("Unpacking natives (placeholder)", "INFO", "MinecraftLauncher");
 
             // Starten
             if (launchMc) {
-                System.out.println("🚀 Starte Minecraft...");
+                ClientLogger.log("Launching Minecraft process", "INFO", "MinecraftLauncher");
                 // create a LogWindow and pass it to the starter so each MC line is forwarded with levels
                 LogWindow logWindow = new LogWindow();
                 startMinecraft(ASSETS_DIR, versionInfo, username, uuid, accessToken,
                         LIB_DIR, INSTANCE_DIR.getPath(), logWindow);
             }
         } catch (Exception e) {
-            System.err.println("❌ Fehler beim Starten von Minecraft: " + e.getMessage());
-            StringWriter sw = new StringWriter();
-            e.printStackTrace(new PrintWriter(sw));
-            System.err.println(sw.toString());
+            ClientLogger.log("Error launching Minecraft: " + e.getMessage(), "ERROR", "MinecraftLauncher");
+            StringBuilder sb = new StringBuilder();
+            for (StackTraceElement ste : e.getStackTrace()) sb.append(ste.toString()).append('\n');
+            ClientLogger.log(sb.toString(), "ERROR", "MinecraftLauncher");
         }
     }
 
     public static String getLatestVersion() throws IOException {
         String json = readUrlToString(MINECRAFT_API_URL);
         JsonObject jsonObject = JsonParser.parseString(json).getAsJsonObject();
-        return jsonObject.getAsJsonObject("latest").get("release").getAsString();
+        String v = jsonObject.getAsJsonObject("latest").get("release").getAsString();
+        ClientLogger.log("Latest release " + v, "INFO", "MinecraftLauncher");
+        return v;
     }
 
     public static JsonObject getVersionInfo(String version) throws IOException {
@@ -89,9 +92,11 @@ public class MinecraftLauncher {
             if (vObj.get("id").getAsString().equals(version)) {
                 String url = vObj.get("url").getAsString();
                 String versionJson = readUrlToString(url);
+                ClientLogger.log("Version info loaded for " + version, "INFO", "MinecraftLauncher");
                 return JsonParser.parseString(versionJson).getAsJsonObject();
             }
         }
+        ClientLogger.log("Version not found: " + version, "ERROR", "MinecraftLauncher");
         throw new IOException("Version not found: " + version);
     }
 
@@ -99,19 +104,18 @@ public class MinecraftLauncher {
                                                File INSTANCE_DIR,
                                                File LIB_DIR,
                                                File ASSETS_DIR) throws IOException {
-        // client.jar
         File clientJarPath = new File(INSTANCE_DIR, "client.jar");
         if (!clientJarPath.exists()) {
             String clientJarUrl = versionInfo.getAsJsonObject("downloads")
                     .getAsJsonObject("client")
                     .get("url").getAsString();
             downloadFile(clientJarUrl, clientJarPath.getAbsolutePath());
-            System.out.println("✅ client.jar downloaded.");
+            ClientLogger.log("client.jar downloaded", "INFO", "MinecraftLauncher");
         }
 
-        // Libraries
         if (versionInfo.has("libraries")) {
             JsonArray libraries = versionInfo.getAsJsonArray("libraries");
+            int count = 0;
             for (JsonElement element : libraries) {
                 JsonObject lib = element.getAsJsonObject();
                 if (!lib.has("downloads")) continue;
@@ -134,11 +138,12 @@ public class MinecraftLauncher {
                             out.write(buffer, 0, bytesRead);
                         }
                     }
+                    count++;
                 }
             }
+            ClientLogger.log("Libraries downloaded/verified: " + count, "INFO", "MinecraftLauncher");
         }
 
-        // Assets
         if (versionInfo.has("assetIndex")) {
             JsonObject assetIndex = versionInfo.getAsJsonObject("assetIndex");
             String assetUrl = assetIndex.get("url").getAsString();
@@ -146,7 +151,7 @@ public class MinecraftLauncher {
             File assetIndexFile = new File(ASSETS_DIR + "/indexes", assetId + ".json");
             Files.createDirectories(assetIndexFile.getParentFile().toPath());
             downloadFile(assetUrl, assetIndexFile.getAbsolutePath());
-            System.out.println("🖼️ Asset index downloaded: " + assetId);
+            ClientLogger.log("Asset index downloaded: " + assetId, "INFO", "MinecraftLauncher");
             downloadAssets(assetIndexFile, new File(ASSETS_DIR, "objects"));
         }
     }
@@ -197,20 +202,20 @@ public class MinecraftLauncher {
         command.add("--assetIndex");
         command.add(assetIndex.get("id").getAsString());
 
-        System.out.println("Start args: " + command);
+        ClientLogger.log("Start args " + command, "INFO", "MinecraftLauncher");
         Process process = new ProcessBuilder(command).directory(LIB_DIR).start();
 
         // Forward stdout -> parsed level
         new Thread(() -> streamToLogger(process.getInputStream(), line -> {
             String lvl = parseLogLevel(line);
             if (logWindow != null) logWindow.log(lvl, line);
-            else System.out.println("[" + lvl + "] " + line);
+            else ClientLogger.log(line, lvl, "MinecraftProcess");
         }), "mc-stdout-reader").start();
 
         // Forward stderr -> ERROR
         new Thread(() -> streamToLogger(process.getErrorStream(), line -> {
             if (logWindow != null) logWindow.log("ERROR", line);
-            else System.err.println("[ERROR] " + line);
+            else ClientLogger.log(line, "ERROR", "MinecraftProcess");
         }), "mc-stderr-reader").start();
     }
 
@@ -265,6 +270,7 @@ public class MinecraftLauncher {
                 Files.copy(in, outFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
             }
         }
+        ClientLogger.log("Assets downloaded", "INFO", "MinecraftLauncher");
     }
 
     private static List<File> findAllJars(File dir) {

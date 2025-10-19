@@ -11,9 +11,13 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
+
+import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
 
 public class ProfileManagement {
     // profileImagePath can be null - if it's null, the standard image will be used
@@ -44,7 +48,9 @@ public class ProfileManagement {
         try (FileWriter file = new FileWriter(jsonFile)) {
             file.write(profile.toString(4));
         } catch (IOException e) {
-            e.printStackTrace();
+            StringWriter sw = new StringWriter();
+            e.printStackTrace(new PrintWriter(sw));
+            ClientLogger.log("Failed to write profile.json: " + sw.toString(), "ERROR", "ProfileManagement");
         }
 
         AuthManager.User User = AuthManager.getUser();
@@ -71,7 +77,9 @@ public class ProfileManagement {
             return factory.build(); // fertiges Profil zurückgeben
 
         } catch (IOException e) {
-            e.printStackTrace();
+            StringWriter sw = new StringWriter();
+            e.printStackTrace(new PrintWriter(sw));
+            ClientLogger.log("Failed to load profile: " + sw.toString(), "ERROR", "ProfileManagement");
             return null; // falls File nicht gelesen werden kann
         }
     }
@@ -93,7 +101,7 @@ public class ProfileManagement {
                     profiles.add(p);
                 }
             } else {
-                System.out.println("Profile Folder existiert, aber keine profile.json: " + profileFolder.getName());
+                ClientLogger.log("Profile folder exists but no profile.json: " + profileFolder.getName(), "WARN", "ProfileManagement");
             }
         }
 

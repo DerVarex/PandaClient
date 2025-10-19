@@ -35,7 +35,8 @@ public class OSUtil {
                     rt.exec("rundll32 url.dll,FileProtocolHandler " + url);
                     return true;
                 } catch (IOException e) {
-                    throw new RuntimeException(e);
+//                    throw new RuntimeException(e);
+                    return false;
                 }
             } else if (os == OS.MAC) {
                 Runtime rt = Runtime.getRuntime();

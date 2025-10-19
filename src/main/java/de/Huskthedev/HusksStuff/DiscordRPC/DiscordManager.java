@@ -9,6 +9,8 @@ import java.io.File;
 import java.net.URL;
 import java.net.URLClassLoader;
 
+import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
+
 public final class DiscordManager {
     public static String APPLICATION_ID = "1397949230563463188"; // TODO: set your Discord App ID or pass to start(String)
 
@@ -98,6 +100,7 @@ public final class DiscordManager {
                                 mzRun.invoke(mzdInstance);
                             }
                         } catch (Throwable t) {
+                            logErr("Exception in Discord RPC callback: " + t);
                         }
                         try { Thread.sleep(2000); } catch (InterruptedException ie) { /* ignore */ }
                     }
@@ -326,14 +329,14 @@ public final class DiscordManager {
     }
 
     private static void log(String msg) {
-        System.out.println("[DiscordRPC] " + msg);
+        ClientLogger.log(msg, "INFO", "DiscordRPC");
     }
 
     private static void logWarn(String msg) {
-        System.out.println("[DiscordRPC][WARN] " + msg);
+        ClientLogger.log(msg, "WARN", "DiscordRPC");
     }
 
     private static void logErr(String msg) {
-        System.err.println("[DiscordRPC][ERROR] " + msg);
+        ClientLogger.log(msg, "ERROR", "DiscordRPC");
     }
 }

@@ -7,6 +7,7 @@ import com.dervarex.PandaClient.Minecraft.loader.LoaderType;
 import fi.iki.elonen.NanoHTTPD;
 import com.dervarex.PandaClient.Auth.AuthManager;
 import org.json.JSONObject;
+import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
 
 import java.io.File;
 import java.io.IOException;
@@ -29,11 +30,12 @@ public class ModServer extends NanoHTTPD {
             try {
                 java.awt.Desktop.getDesktop().open(getPandaClientFolder());
                 NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.INFO, "PandaClient folder opened");
+                ClientLogger.log("Opened PandaClient folder", "INFO", "ModServer");
                 return jsonResponse(new JSONObject()
                         .put("success", true)
                         .toString());
             } catch (IOException e) {
-                e.printStackTrace();
+                ClientLogger.log("Open folder failed: " + e.getMessage(), "ERROR", "ModServer");
                 NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Could not open PandaClient folder: " + e.getMessage());
                 return jsonResponse(new JSONObject()
                         .put("success", false)
@@ -61,10 +63,12 @@ public class ModServer extends NanoHTTPD {
                     else if (params.containsKey("name") && !params.get("name").isEmpty()) profileName = params.get("name").get(0);
                 }
                 if (profileName == null || profileName.isBlank()) {
+                    ClientLogger.log("Missing profileName parameter", "WARN", "ModServer");
                     return jsonResponse(new JSONObject().put("success", false).put("error", "Missing profileName parameter").toString());
                 }
                 AuthManager.User user = AuthManager.getUser();
                 if (user == null) {
+                    ClientLogger.log("Launch denied: not logged in", "WARN", "ModServer");
                     return jsonResponse(new JSONObject().put("success", false).put("error", "Not logged in").toString());
                 }
                 ProfileManagement pm = new ProfileManagement();
@@ -74,15 +78,18 @@ public class ModServer extends NanoHTTPD {
                     if (profileName.equalsIgnoreCase(p.getProfileName())) { target = p; break; }
                 }
                 if (target == null) {
+                    ClientLogger.log("Profile not found: " + profileName, "WARN", "ModServer");
                     return jsonResponse(new JSONObject().put("success", false).put("error", "Profile not found: " + profileName).toString());
                 }
                 // Instanzordner ermitteln (gleiche Logik wie in createProfile)
                 File instanceFolder = new File(new File(getPandaClientFolder(), "instances"), target.getProfileName());
                 // Spiel starten (launchMc = true)
+                ClientLogger.log("Launching instance: " + target.getProfileName(), "INFO", "ModServer");
                 MinecraftLauncher.LaunchMinecraft(target.getVersionId(), user.getUsername(), user.getUuid(), user.getAccessToken(), instanceFolder, true);
                 NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.INFO, "Launching " + target.getProfileName());
                 return jsonResponse(new JSONObject().put("success", true).put("launched", target.getProfileName()).toString());
             } catch (Exception e) {
+                ClientLogger.log("Launch failed: " + e.getMessage(), "ERROR", "ModServer");
                 e.printStackTrace();
                 NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Launch failed: " + e.getMessage());
                 return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
@@ -120,14 +127,14 @@ public class ModServer extends NanoHTTPD {
                 ProfileManagement pm = new ProfileManagement();
                 pm.createProfile(name, version, loader, profileImageFile);
 
+                ClientLogger.log("Instance created: " + name, "INFO", "ModServer");
+
                 return jsonResponse("{\"success\":true}");
             } catch (Exception e) {
+                ClientLogger.log("Create instance failed: " + e.getMessage(), "ERROR", "ModServer");
                 e.printStackTrace();
                 NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Error while creating Instance" + e.getMessage());
-                return jsonResponse(new JSONObject()
-                        .put("success", false)
-                        .put("error", e.getMessage())
-                        .toString());
+                return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
             }
         }
         // --- /loginWithToken ---
@@ -141,6 +148,7 @@ public class ModServer extends NanoHTTPD {
                 return jsonResponse(new JSONObject().put("success", ok).toString());
             } catch (Exception e) {
                 NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Error while trying to login with saved Session: " + e.getMessage());
+                ClientLogger.log("LoginWithToken error: " + e.getMessage(), "ERROR", "ModServer");
                 return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
             }
         }
@@ -171,6 +179,7 @@ public class ModServer extends NanoHTTPD {
                     return jsonResponse(state.toString());
                 }
             } catch (Exception e) {
+                ClientLogger.log("Login start failed: " + e.getMessage(), "ERROR", "ModServer");
                 NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Error while trying to login: " + e.getMessage());
                 // don't throw; return JSON error
                 JSONObject err = new JSONObject()
@@ -189,7 +198,7 @@ public class ModServer extends NanoHTTPD {
 
         // --- /shutdown ---
         if ("/shutdown".equals(uri)) {
-            System.out.println("Shutting down PandaClient");
+            ClientLogger.log("Shutting down PandaClient", "INFO", "ModServer");
             Response res = jsonResponse(new JSONObject()
                     .put("success", true)
                     .put("message", "Shutting down")
@@ -210,6 +219,7 @@ public class ModServer extends NanoHTTPD {
 
         // --- Not Found ---
         NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Requested URI not found: " + uri + " Please report this to the dev team, thank you");
+        ClientLogger.log("Requested URI not found: " + uri, "WARN", "ModServer");
         return newFixedLengthResponse(Response.Status.NOT_FOUND, "application/json", "{\"error\":\"Not Found\"}");
 
     }
