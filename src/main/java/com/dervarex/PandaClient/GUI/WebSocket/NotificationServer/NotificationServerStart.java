@@ -1,4 +1,4 @@
-package com.dervarex.PandaClient.GUI;
+package com.dervarex.PandaClient.GUI.WebSocket.NotificationServer;
 
 import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
 

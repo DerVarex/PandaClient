@@ -386,3 +386,39 @@ nav button {
     align-items: center;        /* vertical center */
     justify-content: center;    /* horizontal center */
 }
+
+/* ----- Live log box at bottom ----- */
+#logstate {
+    position: fixed;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: 1200px;
+    max-height: 160px;
+    padding: 8px 12px;
+    background: rgba(0,0,0,0.85);
+    color: #e5e7eb;
+    border-radius: 10px 10px 0 0;
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.4);
+    overflow-y: auto;
+    z-index: 5000;
+}
+
+.logstate-text {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    margin: 0;
+}
+
+.logline {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    padding: 0 2px;
+}
+
+.level-info { color: #cbd5e1; }
+.level-warn { color: #fde047; }
+.level-error { color: #fca5a5; }

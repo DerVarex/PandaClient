@@ -1,6 +1,7 @@
 package com.dervarex.PandaClient.Minecraft.logger;
 
-import com.dervarex.PandaClient.GUI.NotificationServer;
+import com.dervarex.PandaClient.GUI.WebSocket.NotificationServer.NotificationServer;
+import com.dervarex.PandaClient.GUI.WebSocket.logstate.LogstateServer;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -96,6 +97,13 @@ public class ClientLogger {
                 } else {
                     System.out.println(formatted);
                 }
+
+//                // broadcast to Logstate WebSocket so UI can render live
+//                try {
+//                    LogstateServer.notifyLog(level, where, message);
+//                } catch (Throwable t) {
+//                    // never break logging if ws isn't ready
+//                }
 
                 // persist to disk: immediately for ERROR, debounced for others
                 if (defaultLogFile != null) {

@@ -1,7 +1,7 @@
 const socket = new WebSocket("ws://127.0.0.1:8888");
 
 socket.onopen = () => {
-    console.log("Verbunden mit Java NotificationServer");
+    console.log("Connected with Java NotificationServer");
 };
 
 socket.onmessage = (event) => {
@@ -9,7 +9,7 @@ socket.onmessage = (event) => {
     try {
         data = JSON.parse(event.data);
     } catch (e) {
-        console.error("Fehler beim Parsen:", e, event.data);
+        console.error("Error while Parsing:", e, event.data);
         return;
     }
 
@@ -17,10 +17,10 @@ socket.onmessage = (event) => {
         if (typeof showNotification === "function") {
             showNotification(...data.args);
         } else {
-            console.error("Funktion showNotification nicht definiert!");
+            console.error("Function showNotification not defined!");
         }
     }
 };
 
-socket.onerror = (err) => console.error("WebSocket Fehler:", err);
+socket.onerror = (err) => console.error("WebSocket Error:", err);
 
