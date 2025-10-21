@@ -12,7 +12,7 @@ import java.net.URLClassLoader;
 import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
 
 public final class DiscordManager {
-    public static String APPLICATION_ID = "1397949230563463188"; // TODO: set your Discord App ID or pass to start(String)
+    public static String APPLICATION_ID = "1397949230563463188";
 
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
 
@@ -65,6 +65,12 @@ public final class DiscordManager {
         }
         if (appId == null || appId.isBlank()) {
             logWarn("Discord RPC not started: Application ID is empty. Set DiscordManager.APPLICATION_ID or call start(appId).");
+            return;
+        }
+        //If on max then disable RPC
+        String osName = System.getProperty("os.name", "").toLowerCase();
+        if (osName.contains("mac")) {
+            logWarn("Detected macOS - skipping Discord RPC initialization.");
             return;
         }
         if (!prepareAnyReflection()) {
