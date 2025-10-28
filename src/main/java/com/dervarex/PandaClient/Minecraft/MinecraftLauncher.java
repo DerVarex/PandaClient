@@ -4,6 +4,7 @@ import com.dervarex.PandaClient.Minecraft.logger.LogWindow;
 import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
 import com.dervarex.PandaClient.utils.file.getPandaClientFolder;
 import com.google.gson.*;
+import com.dervarex.PandaClient.utils.Java.JavaManager;
 
 import java.io.*;
 import java.net.URL;
@@ -12,6 +13,8 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.function.Consumer;
+
+import com.dervarex.PandaClient.Minecraft.Version.VersionInfo;
 
 public class MinecraftLauncher {
 
@@ -53,7 +56,7 @@ public class MinecraftLauncher {
 
             // Dateien herunterladen
             ClientLogger.log("Downloading Minecraft files...", "INFO", "MinecraftLauncher");
-            downloadMinecraftFiles(versionInfo, INSTANCE_DIR, LIB_DIR, ASSETS_DIR);
+            downloadMinecraftFiles(versionInfo, INSTANCE_DIR, LIB_DIR, ASSETS_DIR, NATIVES_DIR);
 
             // Natives (Platzhalter)
             ClientLogger.log("Unpacking natives (placeholder)", "INFO", "MinecraftLauncher");
@@ -64,7 +67,7 @@ public class MinecraftLauncher {
                 // create a LogWindow and pass it to the starter so each MC line is forwarded with levels
                 LogWindow logWindow = new LogWindow();
                 startMinecraft(ASSETS_DIR, versionInfo, username, uuid, accessToken,
-                        LIB_DIR, INSTANCE_DIR.getPath(), logWindow);
+                        LIB_DIR, INSTANCE_DIR.getPath(), logWindow, version);
             }
         } catch (Exception e) {
             ClientLogger.log("Error launching Minecraft: " + e.getMessage(), "ERROR", "MinecraftLauncher");
@@ -103,7 +106,8 @@ public class MinecraftLauncher {
     private static void downloadMinecraftFiles(JsonObject versionInfo,
                                                File INSTANCE_DIR,
                                                File LIB_DIR,
-                                               File ASSETS_DIR) throws IOException {
+                                               File ASSETS_DIR,
+                                               File NATIVES_DIR) throws IOException {
         File clientJarPath = new File(INSTANCE_DIR, "client.jar");
         if (!clientJarPath.exists()) {
             String clientJarUrl = versionInfo.getAsJsonObject("downloads")
@@ -114,31 +118,54 @@ public class MinecraftLauncher {
         }
 
         if (versionInfo.has("libraries")) {
+            Set<String> downloadedJars = new HashSet<>();
             JsonArray libraries = versionInfo.getAsJsonArray("libraries");
             int count = 0;
+
             for (JsonElement element : libraries) {
                 JsonObject lib = element.getAsJsonObject();
                 if (!lib.has("downloads")) continue;
                 JsonObject downloads = lib.getAsJsonObject("downloads");
-                if (!downloads.has("artifact")) continue;
-                JsonObject artifact = downloads.getAsJsonObject("artifact");
-                if (!artifact.has("url") || !artifact.has("path")) continue;
 
-                String url = artifact.get("url").getAsString();
-                String path = artifact.get("path").getAsString();
-                File libFile = new File(LIB_DIR, path);
+                // Artifact herunterladen
+                if (downloads.has("artifact")) {
+                    JsonObject artifact = downloads.getAsJsonObject("artifact");
+                    if (!artifact.has("url") || !artifact.has("path")) continue;
 
-                if (!libFile.exists()) {
-                    Files.createDirectories(libFile.getParentFile().toPath());
-                    try (InputStream in = new URL(url).openStream();
-                         FileOutputStream out = new FileOutputStream(libFile)) {
-                        byte[] buffer = new byte[4096];
-                        int bytesRead;
-                        while ((bytesRead = in.read(buffer)) != -1) {
-                            out.write(buffer, 0, bytesRead);
-                        }
+                    String path = artifact.get("path").getAsString();
+                    if (downloadedJars.contains(path)) continue; // skip duplicates
+                    downloadedJars.add(path);
+
+                    File libFile = new File(LIB_DIR, path);
+                    if (!libFile.exists()) {
+                        Files.createDirectories(libFile.getParentFile().toPath());
+                        downloadFile(artifact.get("url").getAsString(), libFile.getAbsolutePath());
+                        count++;
                     }
-                    count++;
+                }
+
+                // Natives entpacken
+                if (downloads.has("classifiers")) {
+                    JsonObject classifiers = downloads.getAsJsonObject("classifiers");
+                    String osName = getOS(); // linux, windows, mac
+                    if (classifiers.has(osName)) {
+                        JsonObject nativeArtifact = classifiers.getAsJsonObject(osName);
+                        if (!nativeArtifact.has("url") || !nativeArtifact.has("path")) continue;
+
+                        String nativePath = nativeArtifact.get("path").getAsString();
+                        if (downloadedJars.contains(nativePath)) continue;
+                        downloadedJars.add(nativePath);
+
+                        File nativeJar = new File(LIB_DIR, nativePath);
+                        if (!nativeJar.exists()) {
+                            Files.createDirectories(nativeJar.getParentFile().toPath());
+                            downloadFile(nativeArtifact.get("url").getAsString(), nativeJar.getAbsolutePath());
+                            count++;
+                        }
+
+                        // Natives entpacken
+                        unzip(nativeJar, NATIVES_DIR);
+                    }
                 }
             }
             ClientLogger.log("Libraries downloaded/verified: " + count, "INFO", "MinecraftLauncher");
@@ -156,6 +183,36 @@ public class MinecraftLauncher {
         }
     }
 
+    private static String getOS() {
+        String os = System.getProperty("os.name").toLowerCase();
+        if (os.contains("linux")) return "natives-linux";
+        if (os.contains("windows")) return "natives-windows";
+        if (os.contains("mac")) return "natives-macos";
+        return "natives-linux";
+    }
+
+    private static void unzip(File zipFile, File targetDir) throws IOException {
+        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(new FileInputStream(zipFile))) {
+            java.util.zip.ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                File outFile = new File(targetDir, entry.getName());
+                if (entry.isDirectory()) {
+                    Files.createDirectories(outFile.toPath());
+                } else {
+                    Files.createDirectories(outFile.getParentFile().toPath());
+                    try (FileOutputStream fos = new FileOutputStream(outFile)) {
+                        byte[] buffer = new byte[4096];
+                        int len;
+                        while ((len = zis.read(buffer)) > 0) {
+                            fos.write(buffer, 0, len);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
     private static void startMinecraft(File ASSETS_DIR,
                                        JsonObject versionInfo,
                                        String username,
@@ -163,61 +220,70 @@ public class MinecraftLauncher {
                                        String accessToken,
                                        File LIB_DIR,
                                        String INSTANCE_DIR,
-                                       LogWindow logWindow) throws IOException {
+                                       LogWindow logWindow,
+                                       String version) throws IOException {
 
         List<String> command = new ArrayList<>();
-        command.add("java");
+        String javaCmd;
+        try {
+            javaCmd = new JavaManager().getRequiredJavaVersionCommand(version);
+        } catch (Throwable t) {
+            javaCmd = "java";
+        }
+        command.add(javaCmd);
+
+        // JVM Flags
         command.add("-Xmx2G");
         command.add("-Xms1G");
-        command.add("--add-opens");
-        command.add("java.base/java.lang.invoke=ALL-UNNAMED");
+
+        // Natives für LWJGL setzen
+        command.add("-Dorg.lwjgl.librarypath=" + new File(INSTANCE_DIR, "natives").getAbsolutePath());
+
+        try {
+            if (VersionInfo.supportsAddOpens(VersionInfo.getRequiredJavaVersion(version))) {
+                command.add("--add-opens");
+                command.add("java.base/java.lang.invoke=ALL-UNNAMED");
+            }
+        } catch (Exception e) {
+            ClientLogger.log("Failed to determine Java version for --add-opens: " + e.getMessage(), "ERROR", "MinecraftLauncher");
+        }
 
         // Classpath
         StringJoiner cp = new StringJoiner(File.pathSeparator);
         cp.add(new File(INSTANCE_DIR, "client.jar").getAbsolutePath());
-        for (File jar : findAllJars(LIB_DIR))
-            cp.add(jar.getAbsolutePath());
-
+        for (File jar : findAllJars(LIB_DIR)) cp.add(jar.getAbsolutePath());
         command.add("-cp");
         command.add(cp.toString());
 
         // Main class
         command.add(versionInfo.get("mainClass").getAsString());
 
-        // Standard MC-Args
-        command.add("--username");
-        command.add(username);
-        command.add("--uuid");
-        command.add(uuid);
-        command.add("--accessToken");
-        command.add(accessToken);
-        command.add("--version");
-        command.add(versionInfo.get("id").getAsString());
-        command.add("--gameDir");
-        command.add(INSTANCE_DIR);
-        command.add("--assetsDir");
-        command.add(ASSETS_DIR.getAbsolutePath());
-
+        // Standard Minecraft-Argumente
+        command.add("--username"); command.add(username);
+        command.add("--uuid"); command.add(uuid);
+        command.add("--accessToken"); command.add(accessToken);
+        command.add("--version"); command.add(versionInfo.get("id").getAsString());
+        command.add("--gameDir"); command.add(INSTANCE_DIR);
+        command.add("--assetsDir"); command.add(ASSETS_DIR.getAbsolutePath());
         JsonObject assetIndex = versionInfo.getAsJsonObject("assetIndex");
-        command.add("--assetIndex");
-        command.add(assetIndex.get("id").getAsString());
+        command.add("--assetIndex"); command.add(assetIndex.get("id").getAsString());
 
         ClientLogger.log("Start args " + command, "INFO", "MinecraftLauncher");
+
         Process process = new ProcessBuilder(command).directory(LIB_DIR).start();
 
-        // Forward stdout -> parsed level
         new Thread(() -> streamToLogger(process.getInputStream(), line -> {
             String lvl = parseLogLevel(line);
             if (logWindow != null) logWindow.log(lvl, line);
             else ClientLogger.log(line, lvl, "MinecraftProcess");
         }), "mc-stdout-reader").start();
 
-        // Forward stderr -> ERROR
         new Thread(() -> streamToLogger(process.getErrorStream(), line -> {
             if (logWindow != null) logWindow.log("ERROR", line);
             else ClientLogger.log(line, "ERROR", "MinecraftProcess");
         }), "mc-stderr-reader").start();
     }
+
 
     // Helper to read a stream line-by-line and forward to logger
     private static void streamToLogger(InputStream in, Consumer<String> logger) {
@@ -235,7 +301,6 @@ public class MinecraftLauncher {
         String up = line.toUpperCase(Locale.ROOT);
         if (up.contains("[ERROR]") || up.contains(" ERROR ") || up.contains("EXCEPTION") || up.contains("TRACE")) return "ERROR";
         if (up.contains("[WARN]") || up.contains(" WARN ") || up.contains("[WARNING]")) return "WARN";
-        if (up.contains("[INFO]") || up.contains(" INFO ") || up.contains("FINE") || up.contains("DEBUG")) return "INFO";
         return "INFO";
     }
 
