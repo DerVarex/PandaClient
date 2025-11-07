@@ -89,28 +89,60 @@ public class JavaManager {
     }
 
     public Java downloadAndInstall(int major, String arch) throws IOException {
+        // delete old java of same major i don't know why we need this because theres a check before but maybe this will work
+        for (Java existing : listInstalled()) {
+            if (existing.majorVersion == major) {
+                ClientLogger.log("Removing old Java " + existing.getName(), "INFO", "JavaManager");
+                deleteRecursive(existing.getPath());
+            }
+        }
+
         Objects.requireNonNull(arch, "arch");
         String osStr = mapOsForAdoptium(OSUtil.getOS());
         String mappedArch = mapArch(arch);
-        String url = String.format(Locale.ROOT,
-                "https://api.adoptium.net/v3/assets/latest/%d/hotspot?os=%s&image_type=jre&architecture=%s",
-                major, osStr, mappedArch);
 
-        ClientLogger.log("Query Adoptium: " + url, "INFO", "JavaManager");
-        JSONArray arr = new JSONArray(httpGet(url));
-        if (arr.isEmpty()) throw new IOException("No assets found for Java " + major + " on " + osStr + "/" + mappedArch);
-        JSONObject obj = arr.getJSONObject(0);
-        JSONObject binary = obj.getJSONObject("binary");
-        JSONObject pkg = binary.getJSONObject("package");
-        String link = pkg.getString("link");
-        String releaseName = obj.getString("release_name") + "-jre";
+        // Try JRE first, then JDK as fallback
+        JSONArray arr = new JSONArray();
+        String link = null;
+        String releaseName = null;
+        String imageTypeUsed = null;
+        IOException lastErr = null;
+        for (String imageType : new String[]{"jre", "jdk"}) {
+            String url = String.format(Locale.ROOT,
+                    "https://api.adoptium.net/v3/assets/latest/%d/hotspot?os=%s&image_type=%s&architecture=%s",
+                    major, osStr, imageType, mappedArch);
+            ClientLogger.log("Query Adoptium: " + url, "INFO", "JavaManager");
+            try {
+                arr = new JSONArray(httpGet(url));
+                if (!arr.isEmpty()) {
+                    JSONObject obj = arr.getJSONObject(0);
+                    for (int i = 1; i < arr.length(); i++) {
+                        JSONObject next = arr.getJSONObject(i);
+                        if (next.optInt("version_data", 0) > obj.optInt("version_data", 0)) obj = next;
+                    }
+                    JSONObject binary = obj.getJSONObject("binary");
+                    JSONObject pkg = binary.getJSONObject("package");
+                    link = pkg.getString("link");
+                    releaseName = obj.getString("release_name") + "-" + imageType;
+                    imageTypeUsed = imageType;
+                    break;
+                }
+            } catch (IOException e) {
+                lastErr = e;
+                ClientLogger.log("Adoptium request failed for image_type=" + imageType + ": " + e.getMessage(), "WARN", "JavaManager");
+            }
+        }
+        if (link == null) {
+            if (lastErr != null) throw lastErr;
+            throw new IOException("No assets found for Java " + major + " on " + osStr + "/" + mappedArch);
+        }
 
         // Download
         Path tmp = Files.createTempFile("java-" + major + "-", getFileSuffix(link));
         try (InputStream in = new URL(link).openStream()) {
             Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING);
         }
-        ClientLogger.log("Downloaded JRE to " + tmp, "INFO", "JavaManager");
+        ClientLogger.log("Downloaded " + imageTypeUsed.toUpperCase(Locale.ROOT) + " to " + tmp, "INFO", "JavaManager");
 
         // Extract into <base>/<releaseName>
         Path target = baseDir.resolve(safeName(releaseName));
@@ -123,12 +155,12 @@ public class JavaManager {
 
         // On macOS, adjust to Contents/Home
         Path home = findJavaHome(target);
-        if (home == null) throw new IOException("Could not locate bin/java in extracted JRE");
+        if (home == null) throw new IOException("Could not locate bin/java in extracted " + imageTypeUsed.toUpperCase(Locale.ROOT));
 
         Java j = new Java(releaseName, home);
         Boolean identifyResult = j.identify();
         System.out.println(identifyResult);
-        if (!j.isLoaded()) throw new IOException("Installed JRE did not identify correctly at " + home);
+        if (!j.isLoaded()) throw new IOException("Installed runtime did not identify correctly at " + home);
 
         // Persist a name file
         try { Files.writeString(home.resolve("name.txt"), releaseName); } catch (IOException ignored) {}
@@ -316,9 +348,13 @@ public class JavaManager {
         } catch (Throwable ignored) {}
         return "java";
     }
+
     /**
      * Ensure the required Java version for the given Minecraft version is installed,
      * and return its executable path.
+     * This method now contains robust fallbacks: if the Mojang API can't be reached,
+     * we infer the requirement from the version string (<=1.16 => 8, 1.17 => 16, >=1.18 => 17)
+     * and try to use or install that.
      * @return Java executable path
      * @throws Exception if installation or lookup fails
      */
@@ -328,16 +364,60 @@ public class JavaManager {
             requiredJava = VersionInfo.getRequiredJavaVersion(version); // API
         } catch (Exception e) {
             ClientLogger.log("Failed to get required Java version from API: " + e.getMessage(), "WARN", "JavaManager");
-            requiredJava = 17; // default fallback
+            requiredJava = inferJavaFromMcVersion(version);
+            ClientLogger.log("Inferred required Java " + requiredJava + " from version '" + version + "'", "INFO", "JavaManager");
         }
 
         JavaManager jm = new JavaManager();
-        Java j = jm.ensureInstalledForCurrentArch(requiredJava);
-        Path exe = jm.getExecutable(j);
-        ClientLogger.log("Using Java " + j.getName() + " for Minecraft " + version + " | executable: " + exe, "INFO", "JavaManager");
-        if (exe != null && Files.exists(exe)) return exe.toAbsolutePath().toString();
+        try {
+            Java j = jm.ensureInstalledForCurrentArch(requiredJava);
+            Path exe = jm.getExecutable(j);
+            ClientLogger.log("Using Java " + j.getName() + " for Minecraft " + version + " | executable: " + exe, "INFO", "JavaManager");
+            if (exe != null && Files.exists(exe)) return exe.toAbsolutePath().toString();
+        } catch (IOException dl) {
+            ClientLogger.log("Failed to ensure/install Java " + requiredJava + ": " + dl.getMessage(), "WARN", "JavaManager");
+            // try to find an already installed Java of the required major
+            for (Java j : jm.listInstalled()) {
+                if (j.majorVersion == requiredJava) {
+                    Path exe = jm.getExecutable(j);
+                    if (exe != null && Files.exists(exe)) {
+                        ClientLogger.log("Falling back to already installed Java " + j.getName() + " (" + exe + ")", "INFO", "JavaManager");
+                        return exe.toAbsolutePath().toString();
+                    }
+                }
+            }
+            // as last resort use newest available (may still be wrong, but better than plain 'java')
+            String fallback = jm.getNewestJavaCommand();
+            ClientLogger.log("Falling back to newest available Java command: " + fallback, "WARN", "JavaManager");
+            return fallback;
+        }
 
         throw new IOException("Could not locate java executable for Java " + requiredJava);
+    }
+
+    // Heuristic fallback mapping if API fails
+    private static int inferJavaFromMcVersion(String version) {
+        if (version == null || version.isBlank()) return 17; // safe default
+        String v = version.trim().toLowerCase(Locale.ROOT);
+        // strip any labels like "release-" etc.
+        v = v.replace("release-", "").replace("minecraft-", "");
+        // Extract numeric prefix like 1.16.5
+        String num = v.split("-", 2)[0]; // split on '-' if present
+        // basic compare on major.minor
+        try {
+            String[] parts = num.split("\\.");
+            int major = Integer.parseInt(parts[0]);
+            int minor = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
+            if (major > 1) {
+                // newer scheme (e.g., 21w) won't land here normally
+                return 17;
+            }
+            if (minor <= 16) return 8;        // 1.16 and below
+            if (minor == 17) return 16;       // 1.17 requires Java 16
+            return 17;                        // 1.18+
+        } catch (Exception ignored) {
+            return 17;
+        }
     }
 
     public static void main(String[] args) {
