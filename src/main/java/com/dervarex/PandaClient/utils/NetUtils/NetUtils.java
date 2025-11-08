@@ -3,6 +3,7 @@ package com.dervarex.PandaClient.utils.NetUtils;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.URL;
 
 public class NetUtils {
     /*
@@ -28,6 +29,9 @@ public class NetUtils {
         } catch (Exception e) {
             return false;
         }
+    }
+    public static String urlToString(URL url) {
+        return url.toString();
     }
 
 }

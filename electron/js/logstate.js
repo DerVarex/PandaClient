@@ -74,4 +74,16 @@
   window.clearLog = clearLog;
   window.hideLog = hideLog;
   window.showLog = showLog;
+
+  // Also listen for a custom event so other scripts can dispatch logs even if
+  // appendLogLine is not reachable in their context. This decouples scripts and
+  // makes startup order less important.
+  window.addEventListener('panda-logstate', function(e) {
+    try {
+      const d = e && e.detail ? e.detail : {};
+      appendLogLine(d.level, d.where, d.message, d.timestamp);
+    } catch (err) {
+      console.error('panda-logstate handler error:', err);
+    }
+  });
 })();
