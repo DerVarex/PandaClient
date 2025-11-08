@@ -1,6 +1,7 @@
 package com.dervarex.PandaClient.Minecraft;
 
 import com.dervarex.PandaClient.GUI.WebSocket.NotificationServer.NotificationServer;
+import com.dervarex.PandaClient.GUI.WebSocket.logstate.Logstate;
 import com.dervarex.PandaClient.Minecraft.logger.LogWindow;
 import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
 import com.dervarex.PandaClient.utils.file.getPandaClientFolder;
@@ -14,6 +15,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -32,6 +34,8 @@ public class MinecraftLauncher {
     private static final File BASE_DIR = getPandaClientFolder.getPandaClientFolder();
     private static final File INSTANCES_BASE_DIR = new File(BASE_DIR, "instances");
     private static final File VERSIONS_BASE_DIR = new File(BASE_DIR, "versions");
+    // central assets dir (Vanilla expects /assets at root)
+    private static final File GLOBAL_ASSETS_DIR = new File(BASE_DIR, "assets");
 
     /** Startet Vanilla Minecraft */
     public static void LaunchMinecraft(
@@ -50,6 +54,7 @@ public class MinecraftLauncher {
             Files.createDirectories(BASE_DIR.toPath());
             Files.createDirectories(INSTANCES_BASE_DIR.toPath());
             Files.createDirectories(INSTANCE_DIR.toPath());
+            Files.createDirectories(GLOBAL_ASSETS_DIR.toPath());
 
             // Version ermitteln (immer mindestens 1.17)
             ClientLogger.log("Resolving version (min 1.17)...", "INFO", "MinecraftLauncher");
@@ -77,10 +82,7 @@ public class MinecraftLauncher {
         }
     }
 
-    /**
-     * Liefert die neueste Release-Version, die mindestens minVersion entspricht (z.B. "1.17").
-     * Falls nichts gefunden wird, fällt es auf das offizielle latest.release zurück.
-     */
+    // ----------------------------- Version helpers (unchanged) -----------------------------
     public static String getLatestVersionAtLeast(String minVersion) throws IOException {
         String manifestJson = readUrlToString(MINECRAFT_API_URL);
         JsonObject manifest = JsonParser.parseString(manifestJson).getAsJsonObject();
@@ -91,7 +93,6 @@ public class MinecraftLauncher {
             return latestRelease;
         }
 
-        // sonst: suche die höchstmögliche release-version mit id >= minVersion
         JsonArray versions = manifest.getAsJsonArray("versions");
         String bestId = null;
         Instant bestTime = null;
@@ -99,37 +100,23 @@ public class MinecraftLauncher {
         for (JsonElement el : versions) {
             JsonObject vObj = el.getAsJsonObject();
             String type = vObj.has("type") ? vObj.get("type").getAsString() : "release";
-            if (!"release".equalsIgnoreCase(type)) continue; // nur releases
+            if (!"release".equalsIgnoreCase(type)) continue;
             String id = vObj.get("id").getAsString();
-            if (!isNumericDottedVersion(id)) continue; // skip snapshots / weird ids
+            if (!isNumericDottedVersion(id)) continue;
 
             if (!isVersionAtLeast(id, minVersion)) continue;
 
             String t = vObj.has("releaseTime") ? vObj.get("releaseTime").getAsString() : null;
             Instant ti = null;
             if (t != null) {
-                try {
-                    ti = Instant.parse(t);
-                } catch (Exception ignored) {
-                    // fallback: keep null
-                }
+                try { ti = Instant.parse(t); } catch (Exception ignored) {}
             }
-            if (bestId == null) {
-                bestId = id;
-                bestTime = ti;
-            } else {
-                // prefer newer by releaseTime if present, else lex compare id
+            if (bestId == null) { bestId = id; bestTime = ti; }
+            else {
                 if (bestTime != null && ti != null) {
-                    if (ti.isAfter(bestTime)) {
-                        bestId = id;
-                        bestTime = ti;
-                    }
-                } else if (ti != null) {
-                    bestId = id;
-                    bestTime = ti;
-                } else if (compareVersion(id, bestId) > 0) {
-                    bestId = id;
-                }
+                    if (ti.isAfter(bestTime)) { bestId = id; bestTime = ti; }
+                } else if (ti != null) { bestId = id; bestTime = ti; }
+                else if (compareVersion(id, bestId) > 0) bestId = id;
             }
         }
 
@@ -143,7 +130,6 @@ public class MinecraftLauncher {
     }
 
     public static String getLatestVersion() throws IOException {
-        // default: require at least 1.17
         return getLatestVersionAtLeast("1.17");
     }
 
@@ -165,30 +151,28 @@ public class MinecraftLauncher {
         throw new IOException("Version not found: " + version);
     }
 
-    /**
-     * Lädt client.jar, libraries, natives und assets in BASE_DIR/versions/<version>/*
-     * und sorgt dafür, dass instance/client.jar vorhanden ist (kopiert falls nötig).
-     */
+    // ----------------------------- Download & prepare files -----------------------------
     private static void downloadMinecraftFiles(JsonObject versionInfo, File INSTANCE_DIR) {
         try {
             String versionId = versionInfo.get("id").getAsString();
-            File VERSION_DIR = new File(VERSIONS_BASE_DIR, versionId); // <- use VERSIONS_BASE_DIR
+            File VERSION_DIR = new File(VERSIONS_BASE_DIR, versionId);
             File LIB_DIR = new File(VERSION_DIR, "libraries");
             File NATIVES_DIR = new File(VERSION_DIR, "natives");
-            File ASSETS_DIR = new File(VERSION_DIR, "assets");
+            // assets are global
+            File ASSETS_DIR = GLOBAL_ASSETS_DIR;
 
             Files.createDirectories(VERSION_DIR.toPath());
             Files.createDirectories(LIB_DIR.toPath());
             Files.createDirectories(NATIVES_DIR.toPath());
             Files.createDirectories(ASSETS_DIR.toPath());
 
-            // 1) client.jar (speichere als client.jar)
+            // 1) client.jar
             if (versionInfo.has("downloads") && versionInfo.getAsJsonObject("downloads").has("client")) {
                 JsonObject client = versionInfo.getAsJsonObject("downloads").getAsJsonObject("client");
                 File clientFile = new File(VERSION_DIR, "client.jar");
-                if (!clientFile.exists()) {
+                if (!clientFile.exists() || clientFile.length() < 1024) {
                     ClientLogger.log("Downloading client.jar...", "INFO", "MinecraftLauncher");
-                    FileUtils.copyURLToFile(new URL(client.get("url").getAsString()), clientFile);
+                    safeDownload(client.get("url").getAsString(), clientFile);
                 } else {
                     ClientLogger.log("client.jar exists, skipping", "INFO", "MinecraftLauncher");
                 }
@@ -221,10 +205,10 @@ public class MinecraftLauncher {
                             String path = artifact.get("path").getAsString();
                             if (!downloadedPaths.contains(path)) {
                                 File libFile = new File(LIB_DIR, path);
-                                if (!libFile.exists()) {
+                                if (!libFile.exists() || libFile.length() < 1024) {
                                     ClientLogger.log("Downloading lib: " + path, "INFO", "MinecraftLauncher");
                                     libFile.getParentFile().mkdirs();
-                                    FileUtils.copyURLToFile(new URL(artifact.get("url").getAsString()), libFile);
+                                    safeDownload(artifact.get("url").getAsString(), libFile);
                                     count++;
                                 }
                                 downloadedPaths.add(path);
@@ -240,11 +224,11 @@ public class MinecraftLauncher {
                             if (nativeObj.has("url") && nativeObj.has("path")) {
                                 String nativePath = nativeObj.get("path").getAsString();
                                 if (!downloadedPaths.contains(nativePath)) {
-                                    File nativeJarFile = new File(LIB_DIR, nativePath); // store native jars under libraries (like official)
-                                    if (!nativeJarFile.exists()) {
+                                    File nativeJarFile = new File(LIB_DIR, nativePath);
+                                    if (!nativeJarFile.exists() || nativeJarFile.length() < 1024) {
                                         ClientLogger.log("Downloading native jar: " + nativeJarFile.getName(), "INFO", "MinecraftLauncher");
                                         nativeJarFile.getParentFile().mkdirs();
-                                        FileUtils.copyURLToFile(new URL(nativeObj.get("url").getAsString()), nativeJarFile);
+                                        safeDownload(nativeObj.get("url").getAsString(), nativeJarFile);
                                         count++;
                                     } else {
                                         ClientLogger.log("Native jar exists, skipping: " + nativeJarFile.getName(), "INFO", "MinecraftLauncher");
@@ -261,14 +245,14 @@ public class MinecraftLauncher {
                 ClientLogger.log("Libraries/natives downloaded/verified: " + count, "INFO", "MinecraftLauncher");
             }
 
-            // 3) Assets (unchanged)
+            // 3) Assets (index into global assets dir)
             if (versionInfo.has("assetIndex")) {
                 JsonObject assetIndex = versionInfo.getAsJsonObject("assetIndex");
                 String assetUrl = assetIndex.get("url").getAsString();
                 String assetId = assetIndex.get("id").getAsString();
                 File assetIndexFile = new File(ASSETS_DIR + "/indexes", assetId + ".json");
                 Files.createDirectories(assetIndexFile.getParentFile().toPath());
-                if (!assetIndexFile.exists()) {
+                if (!assetIndexFile.exists() || assetIndexFile.length() < 100) {
                     downloadFile(assetUrl, assetIndexFile.getAbsolutePath());
                     ClientLogger.log("Asset index downloaded: " + assetId, "INFO", "MinecraftLauncher");
                 } else {
@@ -283,6 +267,34 @@ public class MinecraftLauncher {
             e.printStackTrace();
         }
     }
+
+    // minimal safe downloader: retries once, checks size>1KB heuristic
+    private static void safeDownload(String url, File target) throws IOException {
+        Files.createDirectories(target.getParentFile().toPath());
+        int attempts = 0;
+        while (attempts < 2) {
+            attempts++;
+            ClientLogger.log("safeDownload attempt " + attempts + " -> " + target.getName(), "INFO", "Downloader");
+            try (InputStream in = new URL(url).openStream()) {
+                Files.copy(in, target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                ClientLogger.log("Download attempt failed: " + e.getMessage(), "WARN", "Downloader");
+                ClientLogger.log("Trying wget fallback...", "WARN", "Downloader");
+                try {
+                    Process wget = new ProcessBuilder("wget", "-O", target.getAbsolutePath(), url).start();
+                    boolean finished = wget.waitFor(60, TimeUnit.SECONDS);
+                    if (!finished || wget.exitValue() != 0) {
+                        ClientLogger.log("wget failed with exit code " + (finished ? wget.exitValue() : "timeout"), "WARN", "Downloader");
+                    }
+                } catch (Exception ex) {
+                    ClientLogger.log("wget fallback failed: " + ex.getMessage() + " maybe it isn't installed", "ERROR", "Downloader");
+                }
+            }
+            if (target.exists() && target.length() > 0) return;
+            if (attempts >= 2) throw new IOException("Failed to download " + url);
+        }
+    }
+
     private static void unzip(File zipFile, File destDir) throws IOException {
         try (ZipInputStream zis = new ZipInputStream(new FileInputStream(zipFile))) {
             ZipEntry entry;
@@ -299,8 +311,6 @@ public class MinecraftLauncher {
             }
         }
     }
-
-
 
     /**
      * Entpackt native Bibliotheken aus einem natives-*.jar in ein flaches natives-Verzeichnis.
@@ -363,9 +373,9 @@ public class MinecraftLauncher {
         File VERSION_DIR = new File(VERSIONS_BASE_DIR, versionId);
         File LIB_DIR = new File(VERSION_DIR, "libraries");
         File NATIVES_DIR = new File(VERSION_DIR, "natives");
-        File ASSETS_DIR = new File(VERSION_DIR, "assets");
+        File ASSETS_DIR = GLOBAL_ASSETS_DIR;
 
-        // ensure client.jar exists in version dir (client.jar) and copy to instance
+        // Sicherstellen, dass client.jar existiert
         File clientJarInVersion = new File(VERSION_DIR, "client.jar");
         File clientJarInInstance = new File(INSTANCE_DIR, "client.jar");
         if (!clientJarInVersion.exists()) {
@@ -376,22 +386,20 @@ public class MinecraftLauncher {
             Files.copy(clientJarInVersion.toPath(), clientJarInInstance.toPath(), StandardCopyOption.REPLACE_EXISTING);
         }
 
-        // platform natives folder (natives/<platform>)
+        // Platform natives folder
         String platformFolder = getPlatformFolder(); // linux/windows/macos
         File PLATFORM_NATIVES_DIR = new File(NATIVES_DIR, platformFolder);
         Files.createDirectories(PLATFORM_NATIVES_DIR.toPath());
 
-        // If there are still .jar natives in libraries (rare), try to unpack them too
-        // (some native jars were saved into LIB_DIR path structure)
+        // Unpack natives in libs if still present
         for (File libJar : findAllJars(LIB_DIR)) {
             String name = libJar.getName().toLowerCase();
             if (name.contains("natives") && name.endsWith(".jar")) {
-                // unpack to platform natives (will skip existing files)
                 unpackNatives(libJar, PLATFORM_NATIVES_DIR);
             }
         }
 
-        // sanity check: look for liblwjgl.so (Linux) or corresponding files
+        // sanity check: look for liblwjgl.so/dll/dylib
         boolean hasNative = false;
         File[] nativeFiles = PLATFORM_NATIVES_DIR.listFiles();
         if (nativeFiles != null) {
@@ -406,50 +414,99 @@ public class MinecraftLauncher {
             }
         }
         if (!hasNative) {
-            ClientLogger.log("WARNING: No platform natives found in " + PLATFORM_NATIVES_DIR.getAbsolutePath() + ". Minecraft will likely fail to load LWJGL.", "WARN", "MinecraftLauncher");
+            ClientLogger.log("WARNING: No platform natives found in " + PLATFORM_NATIVES_DIR.getAbsolutePath() + ". Will attempt to re-extract from library jars.", "WARN", "MinecraftLauncher");
+            for (File libJar : findAllJars(LIB_DIR)) {
+                if (libJar.getName().toLowerCase().contains("natives") && libJar.getName().toLowerCase().endsWith(".jar")) {
+                    unpackNatives(libJar, PLATFORM_NATIVES_DIR);
+                }
+            }
         } else {
             ClientLogger.log("Found platform natives in " + PLATFORM_NATIVES_DIR.getAbsolutePath(), "INFO", "MinecraftLauncher");
         }
 
+        // --- LWJGL Version Filter (robust, umfasst core + modules) ---
+        List<File> jars = findAllJars(LIB_DIR);
+
+// Map: version -> list of lwjgl-related jars (core + modules)
+        Map<String, List<File>> lwjglVersionMap = new HashMap<>();
+        Pattern verPattern = Pattern.compile(".*-([0-9]+\\.[0-9]+\\.[0-9]+)\\.jar$");
+        for (File jar : jars) {
+            String lname = jar.getName().toLowerCase();
+            if (!lname.contains("lwjgl")) continue;
+            String ver = null;
+            Matcher m = verPattern.matcher(lname);
+            if (m.find()) ver = m.group(1);
+            if (ver == null) {
+                Matcher m2 = Pattern.compile("([0-9]+\\.[0-9]+\\.[0-9]+)").matcher(lname);
+                if (m2.find()) ver = m2.group(1);
+            }
+            if (ver == null) {
+                ClientLogger.log("Could not detect LWJGL version for " + jar.getName(), "WARN", "MinecraftLauncher");
+                continue;
+            }
+            lwjglVersionMap.computeIfAbsent(ver, k -> new ArrayList<>()).add(jar);
+        }
+
+// choose highest lwjgl version available
+        String highestVersion = null;
+        for (String ver : lwjglVersionMap.keySet()) {
+            if (highestVersion == null || compareVersion(ver, highestVersion) > 0) highestVersion = ver;
+        }
+        List<File> selectedLWJGLJars = highestVersion != null ? lwjglVersionMap.get(highestVersion) : Collections.emptyList();
+
+// debug log which jars selected
+        StringBuilder sel = new StringBuilder();
+        for (File f : selectedLWJGLJars) sel.append(f.getName()).append(", ");
+        ClientLogger.log("Selected LWJGL version: " + highestVersion + " jars: " + sel.toString(), "INFO", "MinecraftLauncher");
+
+// Build classpath: include client + non-lwjgl jars + selected lwjgl jars
+        StringJoiner cp = new StringJoiner(File.pathSeparator);
+        cp.add(clientJarInInstance.getAbsolutePath());
+        for (File jar : jars) {
+            String lname = jar.getName().toLowerCase();
+            if (lname.contains("lwjgl")) {
+                if (!selectedLWJGLJars.contains(jar)) continue; // only chosen version's lwjgl jars
+            }
+            cp.add(jar.getAbsolutePath());
+        }
+
+
+
         // Build command
-        List<String> command = new ArrayList<>();
+        List<String> baseCommand = new ArrayList<>();
         String javaCmd;
         try {
             javaCmd = new JavaManager().getRequiredJavaVersionCommand(version);
-        } catch (Throwable t) {
-            ClientLogger.log("Failed to get Java command: " + t.getMessage(), "ERROR", "MinecraftLauncher");
-            javaCmd = new JavaManager().getNewestJavaCommand();
+        } catch (Throwable t1) {
+            ClientLogger.log("Failed to get required Java command: " + t1.getMessage(), "WARN", "MinecraftLauncher");
+            try {
+                javaCmd = new JavaManager().getNewestJavaCommand();
+            } catch (Throwable t2) {
+                ClientLogger.log("Failed to get fallback Java command: " + t2.getMessage(), "ERROR", "MinecraftLauncher");
+                throw new IOException("No usable Java found");
+            }
         }
-        command.add(javaCmd);
+        baseCommand.add(javaCmd);
 
         // JVM Flags
-        command.add("-Xmx2G");
-        command.add("-Xms1G");
-        // set native paths
-        command.add("-Dorg.lwjgl.librarypath=" + PLATFORM_NATIVES_DIR.getAbsolutePath());
-        command.add("-Djava.library.path=" + PLATFORM_NATIVES_DIR.getAbsolutePath());
-        // optional debug - comment out if noisy
-        // command.add("-Dorg.lwjgl.util.Debug=true");
-        // command.add("-Dorg.lwjgl.util.DebugLoader=true");
+        baseCommand.add("-Xmx2G");
+        baseCommand.add("-Xms1G");
+        baseCommand.add("-Dorg.lwjgl.librarypath=" + PLATFORM_NATIVES_DIR.getAbsolutePath());
+        baseCommand.add("-Djava.library.path=" + PLATFORM_NATIVES_DIR.getAbsolutePath());
 
-        // add --add-opens if required for Java 16+
         try {
             if (VersionInfo.supportsAddOpens(VersionInfo.getRequiredJavaVersion(version))) {
-                command.add("--add-opens");
-                command.add("java.base/java.lang.invoke=ALL-UNNAMED");
+                baseCommand.add("--add-opens");
+                baseCommand.add("java.base/java.lang.invoke=ALL-UNNAMED");
             }
         } catch (Exception e) {
             ClientLogger.log("Failed to determine Java version for --add-opens: " + e.getMessage(), "ERROR", "MinecraftLauncher");
         }
 
-        // Classpath - all library jars + instance client.jar
-        StringJoiner cp = new StringJoiner(File.pathSeparator);
-        cp.add(clientJarInInstance.getAbsolutePath());
-        for (File jar : findAllJars(LIB_DIR)) cp.add(jar.getAbsolutePath());
+        // complete command
+        List<String> command = new ArrayList<>(baseCommand);
         command.add("-cp");
         command.add(cp.toString());
-
-        // Main class and MC args
         String mainClass = versionInfo.get("mainClass").getAsString();
         command.add(mainClass);
 
@@ -459,6 +516,7 @@ public class MinecraftLauncher {
         command.add("--version"); command.add(versionId);
         command.add("--gameDir"); command.add(INSTANCE_DIR.getAbsolutePath());
         command.add("--assetsDir"); command.add(ASSETS_DIR.getAbsolutePath());
+        command.add("--clientId"); command.add(UUID.randomUUID().toString());
         if (versionInfo.has("assetIndex")) {
             JsonObject assetIndex = versionInfo.getAsJsonObject("assetIndex");
             command.add("--assetIndex");
@@ -467,19 +525,64 @@ public class MinecraftLauncher {
 
         ClientLogger.log("Start args: " + String.join(" ", command), "INFO", "MinecraftLauncher");
 
-        Process process = new ProcessBuilder(command).directory(INSTANCE_DIR).start();
+        // Launch with retry for native crash
+        boolean triedRemovingJemalloc = false;
+        int attempt = 0;
+        while (attempt < 2) {
+            attempt++;
+            Process process = new ProcessBuilder(command).directory(INSTANCE_DIR).start();
 
-        new Thread(() -> streamToLogger(process.getInputStream(), line -> {
-            String lvl = parseLogLevel(line);
-            if (logWindow != null) logWindow.log(lvl, line);
-            else ClientLogger.log(line, lvl, "MinecraftProcess");
-        }), "mc-stdout-reader").start();
+            StringBuilder stderrBuf = new StringBuilder();
+            new Thread(() -> streamToLogger(process.getInputStream(), line -> {
+                String lvl = parseLogLevel(line);
+                if (logWindow != null) logWindow.log(lvl, line);
+                else ClientLogger.log(line, lvl, "MinecraftProcess");
+            }), "mc-stdout-reader").start();
 
-        new Thread(() -> streamToLogger(process.getErrorStream(), line -> {
-            if (logWindow != null) logWindow.log("ERROR", line);
-            else ClientLogger.log(line, "ERROR", "MinecraftProcess");
-        }), "mc-stderr-reader").start();
+            new Thread(() -> streamToLogger(process.getErrorStream(), line -> {
+                if (logWindow != null) logWindow.log("ERROR", line);
+                else ClientLogger.log(line, "ERROR", "MinecraftProcess");
+                synchronized (stderrBuf) { stderrBuf.append(line).append('\n'); }
+            }), "mc-stderr-reader").start();
+
+            boolean exited;
+            try { exited = process.waitFor(10, TimeUnit.SECONDS); } catch (InterruptedException e) { exited = false; }
+
+            if (!exited) {
+                ClientLogger.log("Minecraft process started and is running.", "INFO", "MinecraftLauncher");
+                return;
+            } else {
+                int exit = process.exitValue();
+                ClientLogger.log("Minecraft process exited quickly with code " + exit, exit == 0 ? "INFO" : "ERROR", "MinecraftLauncher");
+                String stderr;
+                synchronized (stderrBuf) { stderr = stderrBuf.toString(); }
+
+                boolean nativeCrash = stderr.toLowerCase().contains("sigsegv") ||
+                        stderr.toLowerCase().contains("jemalloc") ||
+                        stderr.toLowerCase().contains("could not initialize class com.mojang.blaze3d.systems.rendersystem");
+
+                if (nativeCrash && !triedRemovingJemalloc) {
+                    ClientLogger.log("Detected native crash (jemalloc/SIGSEGV). Will remove jemalloc natives and retry once.", "WARN", "MinecraftLauncher");
+                    File[] nfiles = PLATFORM_NATIVES_DIR.listFiles();
+                    if (nfiles != null) {
+                        for (File f : nfiles) {
+                            String name = f.getName().toLowerCase();
+                            if (name.contains("jemalloc")) {
+                                try { Files.deleteIfExists(f.toPath()); } catch (IOException e) { ClientLogger.log("Failed to delete " + f.getName() + ": " + e.getMessage(), "WARN", "MinecraftLauncher"); }
+                            }
+                        }
+                    }
+                    triedRemovingJemalloc = true;
+                    try { Thread.sleep(500); } catch (InterruptedException ignored) {}
+                    continue;
+                } else {
+                    ClientLogger.log("Minecraft failed to start and no automatic fix left. See logs for details.", "ERROR", "MinecraftLauncher");
+                    return;
+                }
+            }
+        }
     }
+
 
     // ------------------- Helper: platform folder -------------------
     private static String getPlatformFolder() {
@@ -489,8 +592,7 @@ public class MinecraftLauncher {
         return "linux";
     }
 
-
-    // Helper: extract natives from a JAR
+    // Helper: extract natives from a JAR (kept for completeness)
     private static void extractNatives(File nativesJar, File outputDir) throws IOException {
         try (JarFile jar = new JarFile(nativesJar)) {
             Enumeration<JarEntry> entries = jar.entries();
@@ -509,9 +611,6 @@ public class MinecraftLauncher {
         }
     }
 
-
-
-
     // Version comparator: returns negative if a < b
     private static int compareVersion(String a, String b) {
         try {
@@ -524,7 +623,6 @@ public class MinecraftLauncher {
                 if (ai != bi) return ai - bi;
             }
         } catch (Throwable t) {
-            // fallback
             return a.compareTo(b);
         }
         return 0;

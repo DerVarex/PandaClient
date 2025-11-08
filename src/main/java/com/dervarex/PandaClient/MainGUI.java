@@ -2,7 +2,7 @@ package com.dervarex.PandaClient;
 
 import com.dervarex.PandaClient.GUI.ModServer;
 import com.dervarex.PandaClient.GUI.WebSocket.NotificationServer.NotificationServerStart;
-import com.dervarex.PandaClient.GUI.WebSocket.logstate.LogstateServerStart;
+import com.dervarex.PandaClient.GUI.WebSocket.logstate.LogstateServer;
 import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
 import fi.iki.elonen.NanoHTTPD;
 
@@ -32,8 +32,8 @@ public class MainGUI {
         }
         NotificationServerStart.startNotificationServer();
         ClientLogger.log("Notification server started", "INFO", "MainGUI");
-        // Start logstate server (ws://127.0.0.1:9999)
-        LogstateServerStart.startNotificationServer();
+        LogstateServer logstateServer = new LogstateServer(9999);
+        logstateServer.start();
         ClientLogger.log("Logstate server started", "INFO", "MainGUI");
     }
 }
