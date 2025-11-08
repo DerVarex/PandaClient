@@ -4,8 +4,12 @@ import javax.swing.*;
 import javax.swing.text.*;
 import java.awt.*;
 import java.awt.datatransfer.*;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.List;
+
+import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
 
 public class LogWindow {
     private JTextPane logPane;
@@ -187,7 +191,9 @@ public class LogWindow {
             doc.insertString(doc.getLength(), "["+level+"] "+message+"\n", attr);
             logPane.setCaretPosition(doc.getLength()); // Auto-Scroll
         } catch(BadLocationException e){
-            e.printStackTrace();
+            StringWriter sw = new StringWriter();
+            e.printStackTrace(new PrintWriter(sw));
+            ClientLogger.log(sw.toString(), "ERROR", "LogWindow");
         }
     }
 

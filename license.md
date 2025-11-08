@@ -5,3 +5,6 @@
 
 Thanks to:
 [huskthedev](https://github.com/huskthedev)
+
+Some parts are inspired by:
+[etkmlm](https://github.com/etkmlm/corelauncher)

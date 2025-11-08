@@ -386,3 +386,32 @@ nav button {
     align-items: center;        /* vertical center */
     justify-content: center;    /* horizontal center */
 }
+
+/* ----- Live log box at bottom ----- */
+#logstate {
+    position: fixed;
+    left: 50%;
+    bottom: 16px;
+    transform: translateX(-50%);
+    width: 80%;
+    max-width: 800px;
+    height: 26px;
+    background: rgba(20, 20, 20, 0.9);
+    color: #e5e7eb;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    box-shadow: 0 0 12px rgba(0,0,0,0.4);
+    z-index: 9999;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    transition: opacity 0.2s ease;
+}
+
+#logstate-text {
+    color: #eee;
+}

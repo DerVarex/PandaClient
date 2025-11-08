@@ -79,6 +79,11 @@
             <artifactId>fabric-api</artifactId>
             <version>0.133.4+1.21.8</version>
         </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-compress</artifactId>
+            <version>1.26.2</version>
+        </dependency>
     </dependencies>
     
     <build>

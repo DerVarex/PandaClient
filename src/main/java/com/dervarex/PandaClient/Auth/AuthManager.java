@@ -1,5 +1,6 @@
 package com.dervarex.PandaClient.Auth;
 
+import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
 import com.dervarex.PandaClient.utils.OS.OSUtil;
 import com.dervarex.PandaClient.utils.exceptions.NoConnectionException; // added
 import com.google.gson.Gson;
@@ -23,7 +24,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.io.IOException; // diagnostics
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 
 
 public class AuthManager {
@@ -58,9 +61,13 @@ public class AuthManager {
     static {
         try {
             if (!Files.exists(BASE_DIR)) Files.createDirectories(BASE_DIR);
+            ClientLogger.log("Auth base dir ready at " + BASE_DIR, "INFO", "AuthManager");
             masterKey = loadOrCreateMasterKey();
+            ClientLogger.log("AuthManager initialized", "INFO", "AuthManager");
         } catch (Exception e) {
-            e.printStackTrace();
+            StringWriter sw = new StringWriter();
+            e.printStackTrace(new PrintWriter(sw));
+            ClientLogger.log("AuthManager init failed: " + sw.toString(), "ERROR", "AuthManager");
         }
     }
 
@@ -69,8 +76,10 @@ public class AuthManager {
     private static SecretKey loadOrCreateMasterKey() throws Exception {
         if (Files.exists(KEY_FILE)) {
             byte[] rawKey = Files.readAllBytes(KEY_FILE);
+            ClientLogger.log("Loaded existing master key", "INFO", "AuthManager");
             return new SecretKeySpec(rawKey, "AES");
         } else {
+            ClientLogger.log("Creating new master key", "INFO", "AuthManager");
             KeyGenerator keyGen = KeyGenerator.getInstance("AES");
             keyGen.init(256, new SecureRandom());
             SecretKey key = keyGen.generateKey();
@@ -84,14 +93,19 @@ public class AuthManager {
         cipher.init(Cipher.ENCRYPT_MODE, masterKey);
         byte[] encrypted = cipher.doFinal(sessionJson.toString().getBytes());
         Files.write(SESSION_FILE, Base64.getEncoder().encode(encrypted));
+        ClientLogger.log("Session saved to " + SESSION_FILE, "INFO", "AuthManager");
     }
 
     private static JsonObject loadEncryptedSession() throws Exception {
-        if (!Files.exists(SESSION_FILE)) return null;
+        if (!Files.exists(SESSION_FILE)) {
+            ClientLogger.log("No saved session", "WARN", "AuthManager");
+            return null;
+        }
         byte[] encrypted = Base64.getDecoder().decode(Files.readAllBytes(SESSION_FILE));
         Cipher cipher = Cipher.getInstance("AES");
         cipher.init(Cipher.DECRYPT_MODE, masterKey);
         String json = new String(cipher.doFinal(encrypted));
+        ClientLogger.log("Loaded saved session", "INFO", "AuthManager");
         return GSON.fromJson(json, JsonObject.class);
     }
 
@@ -102,10 +116,12 @@ public class AuthManager {
             StepFullJavaSession.FullJavaSession javaSession =
                     MinecraftAuth.JAVA_DEVICE_CODE_LOGIN.getFromInput(httpClient,
                             new StepMsaDeviceCode.MsaDeviceCodeCallback(msa -> {
-                                System.out.println("Go to " + msa.getVerificationUri());
-                                System.out.println("Enter code " + msa.getUserCode());
-                                System.out.println("Direct URL: " + msa.getDirectVerificationUri());
-                                OSUtil.openBrowser(msa.getDirectVerificationUri());
+                                ClientLogger.log("Go to " + msa.getVerificationUri(), "INFO", "AuthManager");
+                                ClientLogger.log("Enter code " + msa.getUserCode(), "INFO", "AuthManager");
+                                ClientLogger.log("Direct URL: " + msa.getDirectVerificationUri(), "INFO", "AuthManager");
+                                try { OSUtil.openBrowser(msa.getDirectVerificationUri()); } catch (Exception ex) {
+                                    ClientLogger.log("Open browser failed: " + ex.getMessage(), "WARN", "AuthManager");
+                                }
                             }));
 
             JsonObject serialized = MinecraftAuth.JAVA_DEVICE_CODE_LOGIN.toJson(javaSession);
@@ -117,10 +133,15 @@ public class AuthManager {
                     profile.getMcToken().getAccessToken(),
                     serialized);
             session.put(user.getUuid(), user);
+            ClientLogger.log("Login successful for " + user.getUsername(), "INFO", "AuthManager");
             return user;
         } catch (NoConnectionException nce) {
+            ClientLogger.log(nce.getMessage(), "ERROR", "AuthManager");
             throw new RuntimeException(nce.toUserFriendlyMessage(), nce);
         } catch (Exception e) {
+            StringWriter sw = new StringWriter();
+            e.printStackTrace(new PrintWriter(sw));
+            ClientLogger.log("Login failed: " + sw.toString(), "ERROR", "AuthManager");
             throw new RuntimeException("Login failed", e);
         }
     }
@@ -128,11 +149,13 @@ public class AuthManager {
     public static synchronized String startDeviceCodeLoginAsync() {
         // Already in progress?
         if (loginState.status == LoginStatus.PENDING || loginState.status == LoginStatus.STARTING) {
+            ClientLogger.log("Login already in progress", "WARN", "AuthManager");
             return GSON.toJson(loginState);
         }
         loginState = new LoginState();
         loginState.status = LoginStatus.STARTING;
         loginState.message = "Starting device code login";
+        ClientLogger.log("Starting device code login", "INFO", "AuthManager");
         codeReadyLatch = new CountDownLatch(1);
 
         new Thread(() -> {
@@ -148,6 +171,7 @@ public class AuthManager {
                             loginState.directVerificationUri = msa.getDirectVerificationUri();
                             loginState.status = LoginStatus.PENDING;
                             loginState.message = "Waiting for user to authorize in browser";
+                            ClientLogger.log("Waiting for user authorization", "INFO", "AuthManager");
                             try { OSUtil.openBrowser(msa.getDirectVerificationUri()); } catch (Exception ignored) {}
                             if (codeReadyLatch != null) codeReadyLatch.countDown();
                         })
@@ -163,14 +187,19 @@ public class AuthManager {
                 loginState.status = LoginStatus.SUCCESS;
                 loginState.username = user.getUsername();
                 loginState.message = "Login successful";
+                ClientLogger.log("Login successful for " + user.getUsername(), "INFO", "AuthManager");
                 if (codeReadyLatch != null) codeReadyLatch.countDown();
             } catch (NoConnectionException nce) {
                 loginState.status = LoginStatus.ERROR;
                 loginState.message = nce.getMessage();
+                ClientLogger.log("Connectivity error: " + nce.getMessage(), "ERROR", "AuthManager");
                 if (codeReadyLatch != null) codeReadyLatch.countDown();
             } catch (Exception e) {
+                StringWriter sw = new StringWriter();
+                e.printStackTrace(new PrintWriter(sw));
                 loginState.status = LoginStatus.ERROR;
                 loginState.message = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                ClientLogger.log("Async login failed: " + loginState.message + "\n" + sw.toString(), "ERROR", "AuthManager");
                 if (codeReadyLatch != null) codeReadyLatch.countDown();
             }
         }, "DeviceCodeLoginThread").start();
@@ -180,6 +209,7 @@ public class AuthManager {
     }
 
     public static synchronized String getLoginStateJson() {
+        ClientLogger.log("Login state requested", "INFO", "AuthManager");
         return GSON.toJson(loginState);
     }
 
@@ -190,9 +220,11 @@ public class AuthManager {
     public static synchronized void resetLoginState() {
         loginState = new LoginState();
         codeReadyLatch = null;
+        ClientLogger.log("Login state reset", "INFO", "AuthManager");
     }
 
     public static User loginWithSavedSession() {
+        ClientLogger.log("Login with saved session", "INFO", "AuthManager");
         try {
             JsonObject saved = loadEncryptedSession();
             if (saved == null) return null;
@@ -217,15 +249,20 @@ public class AuthManager {
                     profile.getMcToken().getAccessToken(),
                     refreshedJson);
             session.put(user.getUuid(), user);
+            ClientLogger.log("Saved session OK for " + user.getUsername(), "INFO", "AuthManager");
             return user;
         } catch (Exception e) {
-            System.err.println("Login/Refresh fehlgeschlagen: " + e.getMessage());
+            StringWriter sw = new StringWriter();
+            e.printStackTrace(new PrintWriter(sw));
+            ClientLogger.log("Login/Refresh failed: " + sw.toString(), "ERROR", "AuthManager");
             return null;
         }
     }
 
     public static boolean hasSessionSaved() {
-        return SESSION_FILE.toFile().exists();
+        boolean exists = SESSION_FILE.toFile().exists();
+        ClientLogger.log("Has saved session: " + exists, "INFO", "AuthManager");
+        return exists;
     }
 
     public static User getUser() {
@@ -272,6 +309,7 @@ public class AuthManager {
         }
         builder.dnsResolved(dnsOk).tcpAny(tcpOk).httpAny(httpOk);
         if (!(dnsOk || tcpOk || httpOk)) {
+            ClientLogger.log("No connectivity for " + action, "ERROR", "AuthManager");
             throw builder.build();
         }
     }
