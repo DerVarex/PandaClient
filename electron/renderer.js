@@ -1,22 +1,6 @@
-/*document.getElementById('Test').addEventListener('click', async () => {
-    try {
-        const response = await fetch('http://localhost:8080/Test');
-        const mods = await response.json();
-
-        const list = document.getElementById('testList');
-        list.innerHTML = '';
-        mods.forEach(mod => {
-            const li = document.createElement('li');
-            li.textContent = mod;
-            list.appendChild(li);
-        });
-    } catch (err) {
-        console.error("Fehler beim Abrufen vom Test:", err);
-    }
-}); */ //War nur nen test, ob es geht
+console.log('renderer.js loaded');
 
 const imageInput = document.getElementById("image");
-let selectedInstance = null;
 
 document.getElementById("create-instance-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -25,7 +9,7 @@ document.getElementById("create-instance-form").addEventListener("submit", async
     const data = {
         name: formData.get("name") || "",
         version: formData.get("version") || "",
-        modloader: formData.get("instance-type") || ""
+        modloader: formData.get("modloader") || ""
     };
 
     console.log(data);
@@ -87,12 +71,19 @@ window.showNotification = function(type, message) {
     toast.style.transform = "translateX(0)";
 }, 10);
 
+    let timeout;
+
+if(type === "ERROR") {
+    timeout = 10000;
+} else {
+    timeout = 4000;
+}
     // Slide-out und entfernen nach 4 Sekunden
     setTimeout(() => {
     toast.style.opacity = "0";
     toast.style.transform = "translateX(100%)";
     setTimeout(() => container.removeChild(toast), 500);
-}, 4000);
+}, timeout);
 }
 
 async function checkLogin() {
@@ -101,244 +92,312 @@ async function checkLogin() {
         const data = await resp.json();
         console.log("isLoggedIn Antwort:", data);
 
-        if (!data.loggedIn) {
-            openLoginWindow();
-            console.log("Not logged in.");
-
-            document.querySelector('.login-form').addEventListener('submit', async (e) => {
-                e.preventDefault();
-
-                const email = document.querySelector('input[name="Email"]').value;
-                const password = document.querySelector('input[name="password"]').value;
-
-                try {
-                    // Port auf 8800
-                    const respLogin = await fetch(`http://localhost:8800/login?email=${email}&password=${password}`);
-                    const result = await respLogin.json();
-                    console.log("Login Result:", result);
-
-                    if (result.success) {
-                        closeLoginWindow();
-                    } else {
-                        alert("Login failed!");
-                    }
-                } catch (err) {
-                    console.error("Fehler beim Login:", err);
+        if (data.loggedIn) {
+            console.log("Already logged in.");
+            return;
+        }
+        // Try saved session first if available
+        if (data.hasSaved) {
+            try {
+                const respSaved = await fetch("http://localhost:8800/loginWithToken");
+                const resSaved = await respSaved.json();
+                if (resSaved.success) {
+                    closeLoginWindow();
+                    return;
                 }
-            });
-        } else {
-            console.log("Logging in with token.");
-            try{
-                const response = await fetch("http://localhost:8800/loginWithToken");
-                const answer = await response.json();
-            } catch (err) {
-                console.error("Fehler beim Abrufen von isLoggedIn(hasTokenSaved=true): ", err);
+            } catch (e) {
+                console.warn("loginWithToken failed, falling back to device code:", e);
             }
+        }
+        openLoginWindow();
+        console.log("Not logged in.");
+
+
+
+        const form = document.querySelector('.login-form');
+        if (!form._handlerAttached) {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                startDeviceCodeLogin();
+            });
+            form._handlerAttached = true;
         }
     } catch (err) {
         console.error("Fehler beim Abrufen von isLoggedIn:", err);
     }
 }
+
+let loginStatusPoller = null;
+async function startDeviceCodeLogin() {
+    try {
+        const resp = await fetch(`http://localhost:8800/login`);
+        const state = await resp.json();
+        console.log("/login state:", state);
+        updateLoginUI(state);
+        // start polling until SUCCESS or ERROR
+        if (loginStatusPoller) clearInterval(loginStatusPoller);
+        loginStatusPoller = setInterval(pollLoginStatus, 2000);
+    } catch (e) {
+        console.error("Start login failed:", e);
+        showNotification('ERROR', 'Could not start login');
+    }
+}
+
+async function pollLoginStatus() {
+    try {
+        const resp = await fetch(`http://localhost:8800/login/status`);
+        const state = await resp.json();
+        console.log("/login/status:", state);
+        updateLoginUI(state);
+        if (state.status === 'SUCCESS') {
+            clearInterval(loginStatusPoller);
+            loginStatusPoller = null;
+            showNotification('INFO', `Logged in as ${state.username || ''}`);
+            closeLoginWindow();
+        } else if (state.status === 'ERROR') {
+            clearInterval(loginStatusPoller);
+            loginStatusPoller = null;
+            showNotification('ERROR', state.message || 'Login failed');
+        }
+    } catch (e) {
+        console.error("Polling login status failed:", e);
+    }
+}
+
+function updateLoginUI(state) {
+    const statusText = document.getElementById('login-status-text');
+    const codeBox = document.getElementById('device-code-box');
+    const codeEl = document.getElementById('device-code');
+    const linkEl = document.getElementById('verify-link');
+    if (!statusText) return;
+
+    const s = state.status || (state.success ? 'SUCCESS' : 'IDLE');
+    statusText.textContent = state.message || (s === 'PENDING' ? 'Waiting for authorization…' : 'Starting login…');
+    if (state.userCode) {
+        codeBox.style.display = '';
+        codeEl.textContent = state.userCode;
+        if (state.directVerificationUri) {
+            linkEl.href = state.directVerificationUri;
+        } else if (state.verificationUri) {
+            linkEl.href = state.verificationUri;
+        }
+    }
+}
+
 async function fetchInstances() {
     const res = await fetch('http://localhost:8800/instances');
     const instances = await res.json();
-    renderInstances(instances);
+    console.log('[instances][raw]', instances);
+    // renderInstances(instances); // Commented out to avoid error
     return instances;
+}
+// Add stub for renderInstances to avoid ReferenceError if called elsewhere
+function renderInstances(instances) {
+    // Stub: do nothing or log
+    console.log('renderInstances called (stub)', instances);
+}
+
+// Normalisierung: Backend -> vereinheitlichte Struktur
+function normalizeInstance(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const loaderRaw = raw.loader || raw.modloader || '';
+    // Loader hübscher machen (z.B. FABRIC -> Fabric)
+    const loaderPretty = loaderRaw ? loaderRaw.charAt(0) + loaderRaw.slice(1).toLowerCase() : '';
+    return {
+        original: raw,
+        name: raw.profileName || raw.name || raw.title || 'Instance',
+        version: raw.versionId || raw.version || raw.minecraftVersion || '',
+        loader: loaderPretty || 'Unknown',
+        imagePath: raw.profileImagePath || raw.profileImage || raw.image || 'images/default.png'
+    };
+}
+function normalizeInstances(arr) {
+    if (!Array.isArray(arr)) return [];
+    return arr.map(normalizeInstance).filter(Boolean);
 }
 
 function formatInstanceLabel(inst) {
-    // robust gegen verschiedene Feldnamen
-    const name = inst.profileName || inst.name || inst.title || "Instance";
-    let loader = inst.loader || inst.modloader || "";
-    // friendly mapping (falls backend "UNK" liefert)
-    if (!loader || /^UNK|UNKNOWN$/i.test(loader)) loader = "Vanilla";
-    const version = inst.versionId || inst.version || "";
-    return `${name} (${loader} ${version})`.trim();
+    // inst kann bereits normalisiert sein; falls nicht, normalisieren
+    const n = inst.name ? inst : normalizeInstance(inst);
+    return `${n.name} (${n.loader} ${n.version})`.trim();
 }
 
-async function swapVersion(event) {
-    console.log("Swap clicked");
-    if (event) event.stopPropagation(); // verhindert, dass startGame() mitfeuert
+// --- Instance Selection Logic ---
+let selectedInstance = null;
+let instancesCache = [];
 
-    const dropdown = document.getElementById("swap-dropdown");
-    // toggle visible
-    dropdown.classList.toggle("hidden");
-    if (dropdown.classList.contains("hidden")) return;
+window.swapVersion = async function(event) {
+    event.stopPropagation();
+    document.getElementById('select-instance-window').classList.remove('hidden');
+    await fetchInstancesFromBackend();
+};
 
-    dropdown.innerHTML = ''; // clear
-
+async function fetchInstancesFromBackend() {
     try {
-        const res = await fetch("http://localhost:8800/instances");
-        const instances = await res.json();
-        console.log("Instances from backend:", instances);
-
-        if (!Array.isArray(instances) || instances.length === 0) {
-            const empty = document.createElement("div");
-            empty.className = 'instance-item';
-            empty.textContent = "Keine Instanzen gefunden";
-            dropdown.appendChild(empty);
-            return;
-        }
-
-        instances.forEach(inst => {
-            const item = document.createElement("div");
-            item.className = 'instance-item';
-            item.textContent = formatInstanceLabel(inst);
-
-            item.onclick = (e) => {
-                e.stopPropagation(); // wichtig, damit der click nicht hochgeht
-                selectedInstance = inst;
-                updateLaunchButton(inst);
-                dropdown.classList.add("hidden");
-                showNotification("INFO", `Ausgewählt: ${inst.profileName || inst.name || 'Instance'}`);
-            };
-
-            dropdown.appendChild(item);
-        });
+        const res = await fetch('http://localhost:8800/instances');
+        const raw = await res.json();
+        console.log('[instances][raw fetchInstancesFromBackend]', raw);
+        const arr = Array.isArray(raw) ? raw : (raw.instances || []);
+        instancesCache = normalizeInstances(arr);
+        console.log('[instances][normalized]', instancesCache);
+        renderInstanceList(instancesCache);
     } catch (err) {
-        console.error("Fehler beim Laden der Instanzen:", err);
-        const errEl = document.createElement("div");
-        errEl.className = 'instance-item';
-        errEl.textContent = "Fehler beim Laden";
-        dropdown.appendChild(errEl);
+        renderInstanceList([]);
+        showNotification('ERROR', 'Could not fetch instances from backend');
+        console.error('Error fetching instances:', err);
     }
 }
 
-
-
-function showInstanceSelector(instances) {
-    const container = document.getElementById('instance-container');
-    container.innerHTML = ''; // Reset
-
-    const list = document.createElement('ul');
-    list.classList.add('instance-selector');
-
-    instances.forEach(inst => {
-        const item = document.createElement('li');
-        item.textContent = `${inst.name} (${inst.modloader} ${inst.version})`;
-
-        item.addEventListener('click', () => {
-            selectedInstance = inst; // speichern, welche Instanz gewählt wurde
-            updateLaunchButton(inst);
-            container.innerHTML = ''; // Auswahl schließen
-        });
-
-        list.appendChild(item);
-    });
-
-    container.appendChild(list);
-}
-
-function updateLaunchButton(inst) {
-    const launchTitle = document.querySelector('.launch-btn .title');
-    launchTitle.textContent = `${inst.name} ${inst.version}`;
-}
-// Startet die gewählte Instance
-async function startGame() {
-    if (!selectedInstance) {
-        alert('Bitte zuerst eine Instance auswählen!');
+function renderInstanceList(instances) {
+    const list = document.getElementById('select-instance-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!instances.length) {
+        const div = document.createElement('div');
+        div.textContent = 'You don’t have instances';
+        div.style.color = '#aaa';
+        list.appendChild(div);
         return;
     }
-    console.log('Launching', selectedInstance);
-    // Starten
-    const start = await fetch("http://localhost:8800/launch");
-}
-
-function renderInstances(instances) {
-    const container = document.getElementById('instance-container');
-    container.innerHTML = ''; // Reset
-
-    instances.forEach(inst => {
-        const card = document.createElement('article');
-        card.classList.add('card');
-        card.innerHTML = `
-      <div class="visual">
-        <img src="${inst.image || 'images/default.png'}" alt="${inst.name}" />
-      </div>
-      <div class="info">
-        <div class="title-row">
-          <h2 class="instance-title">${inst.name}</h2>
-          <div class="tag">${inst.modloader} • ${inst.version}</div>
-        </div>
-        <div class="meta">Klicke auf den Titel, um Details anzuzeigen.</div>
-      </div>
-    `;
-
-        // Klick-Handler (wie in deinem Beispiel)
-        const title = card.querySelector('.instance-title');
-        const meta = card.querySelector('.meta');
-        let toggled = false;
-
-        title.addEventListener('click', () => {
-            toggled = !toggled;
-            title.classList.toggle('selected', toggled);
-            meta.textContent = toggled
-                ? `Details: Diese Instanz läuft auf ${inst.modloader} ${inst.version}.`
-                : 'Klicke auf den Titel, um Details anzuzeigen.';
-        });
-
-        container.appendChild(card);
+    instances.forEach(nInst => {
+        const inst = nInst.name ? nInst : normalizeInstance(nInst);
+        const div = document.createElement('div');
+        div.className = 'instance-option';
+        div.textContent = formatInstanceLabel(inst);
+        div.onclick = () => {
+            selectedInstance = inst; // Speichere normalisierte Instanz
+            updateLaunchButton();
+            closeSelectInstanceWindow();
+        };
+        list.appendChild(div);
     });
 }
 
-// Öffnen und Schließen
-function openInstancesWindow() {
-    document.getElementById("instances-window").classList.remove("hidden");
-    fetchInstances(); // Instanzen laden und anzeigen
-}
+window.closeInstancesWindow = function() {
+    const el = document.getElementById('instances-window');
+    if (el) el.classList.add('hidden');
+};
+window.openCreateInstanceWindow = function() {
+    document.getElementById('create-instance-window').classList.remove('hidden');
+};
+window.closeCreateInstanceWindow = function() {
+    document.getElementById('create-instance-window').classList.add('hidden');
+};
+window.openLoginWindow = function() {
+    document.getElementById('login-window').classList.remove('hidden');
+};
+window.closeLoginWindow = function() {
+    document.getElementById('login-window').classList.add('hidden');
+};
+window.openSelectInstanceWindow = function() {
+    document.getElementById('select-instance-window').classList.remove('hidden');
+};
+window.closeSelectInstanceWindow = function() {
+    document.getElementById('select-instance-window').classList.add('hidden');
+};
+// --- END GLOBAL MODAL OPEN/CLOSE FUNCTIONS ---
 
-function closeInstancesWindow() {
-    document.getElementById("instances-window").classList.add("hidden");
-}
-function openLoginWindow() {
-    document.getElementById("login-window").classList.remove("hidden");
-}
-function closeLoginWindow() {
-    document.getElementById("login-window").classList.add("hidden");
-}
-function openCreateInstanceWindow() {
-    document.getElementById("create-instance-window").classList.remove("hidden");
-}
-function closeCreateInstanceWindow() {
-    document.getElementById("create-instance-window").classList.add("hidden");
-}
+document.addEventListener('mousedown', function(event) {
+    const closableModals = [
+        document.getElementById('select-instance-window'),
+        document.getElementById('instances-window'),
+        document.getElementById('create-instance-window')
+    ];
+    closableModals.forEach(modal => {
+        if (modal && !modal.classList.contains('hidden') && !modal.contains(event.target)) {
+            modal.classList.add('hidden');
+        }
+    });
+});
 
-function makeDraggable(windowId) {
+// Fix makeDraggable to not start drag when clicking the close button
+function makeDraggable(windowId, headerClass) {
     const win = document.getElementById(windowId);
-    const header = win.querySelector("div:first-child"); // Header
+    const header = win.querySelector(headerClass);
     let offsetX, offsetY, isDown = false;
-
-    header.addEventListener("mousedown", e => {
+    if (!header) return;
+    header.addEventListener('mousedown', e => {
+        // Prevent drag if close button is clicked
+        if (e.target.classList.contains('close-btn')) return;
         isDown = true;
         offsetX = e.clientX - win.offsetLeft;
         offsetY = e.clientY - win.offsetTop;
     });
-
-    document.addEventListener("mouseup", () => isDown = false);
-
-    document.addEventListener("mousemove", e => {
+    document.addEventListener('mouseup', () => isDown = false);
+    document.addEventListener('mousemove', e => {
         if (!isDown) return;
-
         let x = e.clientX - offsetX;
         let y = e.clientY - offsetY;
-
-        // Fenster innerhalb des Browserfensters halten
         const maxX = window.innerWidth - win.offsetWidth;
         const maxY = window.innerHeight - win.offsetHeight;
         if (x < 0) x = 0;
         if (y < 0) y = 0;
         if (x > maxX) x = maxX;
         if (y > maxY) y = maxY;
-
-        win.style.left = x + "px";
-        win.style.top = y + "px";
+        win.style.left = x + 'px';
+        win.style.top = y + 'px';
     });
 }
 
-// Anwenden auf beide Fenster
-makeDraggable("instances-window");
-makeDraggable("login-window");
-makeDraggable("create-instance-window");
+function updateLaunchButton() {
+    try {
+        const titleEl = document.querySelector('.launch-btn .title');
+        const subEl = document.querySelector('.launch-btn .subtitle');
+        if (!titleEl || !subEl) return;
+        if (selectedInstance) {
+            const name = selectedInstance.name || selectedInstance.profileName || 'Instance';
+            const ver = selectedInstance.version || selectedInstance.minecraftVersion || '';
+            const loader = selectedInstance.loader || selectedInstance.modloader || '';
+
+            console.log("Selected instance:", selectedInstance);
+            console.log("Name:", name, "Version:", ver, "Loader:", loader);
+            // Trim to avoid extra spaces if ver or loader are empty
+
+            titleEl.textContent = `Launch ${ver || ''}`.trim();
+            subEl.textContent = `${name} ${loader} ${ver}`.trim();
+        }
+    } catch (e) {
+        console.warn('updateLaunchButton failed:', e);
+    }
+}
+
+async function startGame() {
+    if (!selectedInstance) {
+        showNotification('WARNING', 'Please select an instance first (click the swap icon).');
+        return;
+    }
+    try {
+        const inst = selectedInstance.name ? selectedInstance : normalizeInstance(selectedInstance);
+        const params = new URLSearchParams();
+        if (inst && inst.name) params.set('profileName', inst.name); // Backend erwartet profileName
+        const url = `http://localhost:8800/launch${params.toString() ? ('?' + params.toString()) : ''}`;
+        console.log('[launch][request]', url);
+        const resp = await fetch(url);
+        const data = await resp.json().catch(() => ({}));
+        console.log('[launch][response]', data);
+        showNotification(data.success ? 'INFO' : 'ERROR', data.success ? `Launching ${inst.name}` : (data.error || 'Launch failed'));
+    } catch (e) {
+        console.error('Launch failed:', e);
+        showNotification('ERROR', 'Launch failed');
+    }
+}
+window.openPandaClientFolder = async function() {
+    try {
+        await fetch("http://localhost:8800/openPandaClientFolder");
+    } catch (e) {
+        console.error("openPandaClientFolder failed:", e);
+        showNotification('ERROR', 'Could not open Panda Client folder');
+    }
+};
+
+
 
 checkLogin();
+console.log("Login checked");
+
+makeDraggable('select-instance-window', '.select-instance-header');
+makeDraggable('instances-window', '.instances-header');
+makeDraggable('login-window', '.login-header');
+makeDraggable('create-instance-window', '.create-instance-header');
+
 fetchInstances();

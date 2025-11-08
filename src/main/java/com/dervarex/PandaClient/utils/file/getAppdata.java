@@ -1,12 +1,13 @@
 package com.dervarex.PandaClient.utils.file;
 
+import com.dervarex.PandaClient.utils.OS.OS;
 import com.dervarex.PandaClient.utils.OS.OSUtil;
 
 import java.io.File;
 
 public class getAppdata {
 
-    public static File getAppDataFolder(OSUtil.OS os) {
+    public static File getAppDataFolder(OS os) {
         switch (os) {
             case WINDOWS:
                 return new File(System.getenv("APPDATA"));

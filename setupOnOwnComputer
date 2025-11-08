@@ -1,0 +1,29 @@
+download the jar: https://www.curseforge.com/minecraft/mc-mods/fabric-api/download/6972705
+
+
+mvn install:install-file -Dfile=YOUR_DOWNLOAD_FILE_PATH_HERE -DgroupId=net.fabricmc.fabric-api -DartifactId=fabric-api -Dversion=0.133.4+1.21.8 -Dpackaging=jar
+
+
+download: https://maven.fabricmc.net/net/fabricmc/intermediary/1.21.8/intermediary-1.21.8-v2.jar
+
+
+mvn install:install-file -Dfile=YOUR_DOWNLOAD_FILE_PATH_HERE -DgroupId=net.fabricmc -DartifactId=intermediary -Dversion=1.21.8 -Dpackaging=jar
+
+
+download latest mixin from here: https://maven.fabricmc.net/net/fabricmc/sponge-mixin/
+
+
+mvn install:install-file -Dfile=YOUR_DOWNLOAD_PATH_HERE -DgroupId=net.fabricmc -DartifactId=sponge-mixin -Dversion=0.16.3+mixin.0.8.7 -Dpackaging=jar
+
+download the asm libs from here: https://maven.fabricmc.net/org/ow2/asm/
+for every asm:
+mvn install:install-file -Dfile=PATH_TO_asm-9.8.jar -DgroupId=org.ow2.asm -DartifactId=asm -Dversion=9.8 -Dpackaging=jar
+mvn install:install-file -Dfile=PATH_TO_asm-analysis-9.8.jar -DgroupId=org.ow2.asm -DartifactId=asm-analysis -Dversion=9.8 -Dpackaging=jar
+mvn install:install-file -Dfile=PATH_TO_asm-commons-9.8.jar -DgroupId=org.ow2.asm -DartifactId=asm-commons -Dversion=9.8 -Dpackaging=jar
+mvn install:install-file -Dfile=PATH_TO_asm-tree-9.8.jar -DgroupId=org.ow2.asm -DartifactId=asm-tree -Dversion=9.8 -Dpackaging=jar
+mvn install:install-file -Dfile=PATH_TO_asm-util-9.8.jar -DgroupId=org.ow2.asm -DartifactId=asm-util -Dversion=9.8 -Dpackaging=jar
+
+------------------------------------- Now your finished with the mc depencies ---------------------------------------------------
+install npm and do this command to download the electron.exe:
+
+npm install electron --save-dev
