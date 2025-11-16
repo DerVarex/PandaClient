@@ -9,18 +9,19 @@ document.getElementById("create-instance-form").addEventListener("submit", async
     const data = {
         name: formData.get("name") || "",
         version: formData.get("version") || "",
-        modloader: formData.get("modloader") || ""
+        modloader: (formData.get("modloader") || "").toUpperCase()
     };
+
 
     console.log(data);
     console.log("Name ist in js angekommen: " + data.name);
 
-    // Image optional
-    if (imageInput.files.length > 0) {
-        data.image = imageInput.files[0].path; // Electron erlaubt file.path
-    } else {
-        data.image = ""; // nie null
-    }
+//    // Image optional
+//    if (imageInput.files.length > 0) {
+//        data.image = imageInput.files[0].path; // Electron erlaubt file.path
+//    } else {
+//        data.image = ""; // nie null
+//    }
 
     try {
         const res = await fetch("http://localhost:8800/create-instance", {

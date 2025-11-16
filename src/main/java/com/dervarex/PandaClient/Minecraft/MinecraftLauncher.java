@@ -1,5 +1,6 @@
 package com.dervarex.PandaClient.Minecraft;
 
+import com.dervarex.PandaClient.Minecraft.loader.LoaderType;
 import com.dervarex.PandaClient.Minecraft.logger.LogWindow;
 import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
 import com.dervarex.PandaClient.utils.file.getPandaClientFolder;
@@ -13,8 +14,10 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.regex.Pattern;
@@ -38,11 +41,13 @@ public class MinecraftLauncher {
     /** Startet Vanilla Minecraft */
     public static void LaunchMinecraft(
             String version,
+            LoaderType loader,
             String username,
             String uuid,
             String accessToken,
             File instanceName,
-            boolean launchMc
+            boolean launchMc,
+            Optional<Runnable> onComplete
     ) {
         try {
             ClientLogger.log("Starting Minecraft launcher", "INFO", "MinecraftLauncher");
@@ -60,17 +65,17 @@ public class MinecraftLauncher {
             ClientLogger.log("Using version: " + versionToLaunch, "INFO", "MinecraftLauncher");
 
             // Version-Info laden
-            JsonObject versionInfo = getVersionInfo(versionToLaunch);
+            JsonObject versionInfo = getVersionInfo(versionToLaunch, loader, INSTANCE_DIR);
 
             // Dateien herunterladen (werden in BASE_DIR/versions/<version>/... gespeichert)
             ClientLogger.log("Downloading Minecraft files...", "INFO", "MinecraftLauncher");
-            downloadMinecraftFiles(versionInfo, INSTANCE_DIR);
+            downloadMinecraftFiles(versionInfo, INSTANCE_DIR, loader);
 
             // Starten
             if (launchMc) {
                 ClientLogger.log("Launching Minecraft process", "INFO", "MinecraftLauncher");
                 LogWindow logWindow = new LogWindow();
-                startMinecraft(versionInfo, username, uuid, accessToken, INSTANCE_DIR, logWindow, versionToLaunch);
+                startMinecraft(versionInfo, username, uuid, accessToken, INSTANCE_DIR, logWindow, versionToLaunch, loader, onComplete);
             }
         } catch (Exception e) {
             ClientLogger.log("Error launching Minecraft: " + e.getMessage(), "ERROR", "MinecraftLauncher");
@@ -131,7 +136,16 @@ public class MinecraftLauncher {
         return getLatestVersionAtLeast("1.17");
     }
 
-    public static JsonObject getVersionInfo(String version) throws IOException {
+    public static JsonObject getVersionInfo(String version, LoaderType loader, File instanceDIR) throws IOException {
+//        if(loader.equals(LoaderType.FABRIC)) {
+//            File fabricVersionFolder = new File(instanceDIR + File.separator + "versions" + File.separator);
+//            File fabricVersionJson;
+//            for (File file : fabricVersionFolder.listFiles()) {
+//                if (file.isDirectory() && file.getName().contains("fabric")) {
+//                     fabricVersionJson = file;
+//                }
+//            }
+//        }
         String manifestJson = readUrlToString(MINECRAFT_API_URL);
         JsonObject manifest = JsonParser.parseString(manifestJson).getAsJsonObject();
         JsonArray versions = manifest.getAsJsonArray("versions");
@@ -149,8 +163,39 @@ public class MinecraftLauncher {
         throw new IOException("Version not found: " + version);
     }
 
+    public static JsonObject getFabricVersionJson(
+            File instanceDIR
+    ) {
+        File fabricVersionFolder = new File(instanceDIR + File.separator + "versions" + File.separator);
+        File fabricVersionJson = null;
+        for (File file : fabricVersionFolder.listFiles()) {
+            if (file.isDirectory() && file.getName().contains("fabric")) {
+                fabricVersionJson = new File(file + File.separator + file.getName() + ".json");
+            }
+        }
+        try {
+            String content = Files.readString(fabricVersionJson.toPath());
+            return JsonParser.parseString(content).getAsJsonObject();
+        } catch (IOException e) {
+            ClientLogger.log("Failed to load Fabric version json: " + e.getMessage(), "ERROR", "MinecraftLauncher");
+            return null;
+        }
+    }
+    public static File getFabricVersionJsonFile(
+            File instanceDIR
+    ) {
+        File fabricVersionFolder = new File(instanceDIR + File.separator + "versions" + File.separator);
+        File fabricVersionJson = null;
+        for (File file : fabricVersionFolder.listFiles()) {
+            if (file.isDirectory() && file.getName().contains("fabric")) {
+                fabricVersionJson = new File(file + File.separator + file.getName() + ".json");
+            }
+        }
+            return fabricVersionJson;
+    }
+
     // ----------------------------- Download & prepare files -----------------------------
-    private static void downloadMinecraftFiles(JsonObject versionInfo, File INSTANCE_DIR) {
+    private static void downloadMinecraftFiles(JsonObject versionInfo, File INSTANCE_DIR, LoaderType loader) {
         try {
             String versionId = versionInfo.get("id").getAsString();
             File VERSION_DIR = new File(VERSIONS_BASE_DIR, versionId);
@@ -164,15 +209,24 @@ public class MinecraftLauncher {
             Files.createDirectories(NATIVES_DIR.toPath());
             Files.createDirectories(ASSETS_DIR.toPath());
 
-            // 1) client.jar
+            // 1) launcher jar
+
             if (versionInfo.has("downloads") && versionInfo.getAsJsonObject("downloads").has("client")) {
                 JsonObject client = versionInfo.getAsJsonObject("downloads").getAsJsonObject("client");
-                File clientFile = new File(VERSION_DIR, "client.jar");
+
+                String clientjarname = "client.jar";
+
+                if(loader == LoaderType.FABRIC) {
+                    File jsonfile = getFabricVersionJsonFile(INSTANCE_DIR);
+                    clientjarname = jsonfile.getName().replace(".json", "").replace("fabric-loader-", "") + ".jar"; // do it like the fabric installer wants it to be, without the struggle              Fabric Installer reference: String.format("%s-%s-%s", Reference.LOADER_NAME, loaderVersion.name, gameVersion);
+                }
+                File clientFile = new File(VERSION_DIR,clientjarname);
+
                 if (!clientFile.exists() || clientFile.length() < 1024) {
-                    ClientLogger.log("Downloading client.jar...", "INFO", "MinecraftLauncher");
+                    ClientLogger.log("Downloading minecraft jar...", "INFO", "MinecraftLauncher");
                     safeDownload(client.get("url").getAsString(), clientFile);
                 } else {
-                    ClientLogger.log("client.jar exists, skipping", "INFO", "MinecraftLauncher");
+                    ClientLogger.log("minecraft jar exists, skipping", "INFO", "MinecraftLauncher");
                 }
             } else {
                 ClientLogger.log("No client entry in version json", "WARN", "MinecraftLauncher");
@@ -266,7 +320,7 @@ public class MinecraftLauncher {
         }
     }
 
-    // minimal safe downloader: retries once, checks size>1KB heuristic
+    // minimal safe downloader: retries once, then tries wget fallback
     private static void safeDownload(String url, File target) throws IOException {
         Files.createDirectories(target.getParentFile().toPath());
         int attempts = 0;
@@ -357,7 +411,7 @@ public class MinecraftLauncher {
     }
 
     /**
-     * Startet Minecraft. Nutzt version-spezifische libraries/natives aus BASE_DIR/versions/<version>
+     * Start minecraft process with given parameters.
      */
     private static void startMinecraft(JsonObject versionInfo,
                                        String username,
@@ -365,7 +419,9 @@ public class MinecraftLauncher {
                                        String accessToken,
                                        File INSTANCE_DIR,
                                        LogWindow logWindow,
-                                       String version) throws IOException {
+                                       String version,
+                                       LoaderType loader,
+                                       Optional<Runnable> onComplete) throws IOException {
 
         String versionId = versionInfo.get("id").getAsString();
         File VERSION_DIR = new File(VERSIONS_BASE_DIR, versionId);
@@ -373,11 +429,17 @@ public class MinecraftLauncher {
         File NATIVES_DIR = new File(VERSION_DIR, "natives");
         File ASSETS_DIR = GLOBAL_ASSETS_DIR;
 
-        // Sicherstellen, dass client.jar existiert
-        File clientJarInVersion = new File(VERSION_DIR, "client.jar");
-        File clientJarInInstance = new File(INSTANCE_DIR, "client.jar");
+        // Secure the client jar in instance dir
+        String clientjarname = "client.jar";
+
+        if(loader == LoaderType.FABRIC) {
+            File jsonfile = getFabricVersionJsonFile(INSTANCE_DIR);
+            clientjarname = jsonfile.getName().replace(".json", "").replace("fabric-loader-", "") + ".jar"; // do it like the fabric installer wants it to be, without the struggle              Fabric Installer reference: String.format("%s-%s-%s", Reference.LOADER_NAME, loaderVersion.name, gameVersion);
+        }
+        File clientJarInVersion = new File(VERSION_DIR, clientjarname);
+        File clientJarInInstance = new File(INSTANCE_DIR, clientjarname);
         if (!clientJarInVersion.exists()) {
-            throw new FileNotFoundException("client.jar not found at " + clientJarInVersion.getAbsolutePath());
+            throw new FileNotFoundException("minecraft jar not found at " + clientJarInVersion.getAbsolutePath());
         }
         if (!clientJarInInstance.exists()) {
             Files.createDirectories(INSTANCE_DIR.toPath());
@@ -422,8 +484,25 @@ public class MinecraftLauncher {
             ClientLogger.log("Found platform natives in " + PLATFORM_NATIVES_DIR.getAbsolutePath(), "INFO", "MinecraftLauncher");
         }
 
-        // --- LWJGL Version Filter (robust, umfasst core + modules) ---
+        // --- LWJGL Version Filter
         List<File> jars = findAllJars(LIB_DIR);
+
+        List<File> filtered = new ArrayList<>();
+        for (File jar : jars) {
+            boolean isVanillaAsm =
+                    jar.getAbsolutePath().contains("versions")
+                            && jar.getAbsolutePath().contains("org/ow2/asm");
+
+            if (!isVanillaAsm) {
+                filtered.add(jar);
+            }
+        }
+
+        jars = filtered;
+
+        jars.addAll(findAllJars(new File(INSTANCE_DIR + "/libraries")));
+
+
 
 // Map: version -> list of lwjgl-related jars (core + modules)
         Map<String, List<File>> lwjglVersionMap = new HashMap<>();
@@ -491,6 +570,10 @@ public class MinecraftLauncher {
         baseCommand.add("-Xms1G");
         baseCommand.add("-Dorg.lwjgl.librarypath=" + PLATFORM_NATIVES_DIR.getAbsolutePath());
         baseCommand.add("-Djava.library.path=" + PLATFORM_NATIVES_DIR.getAbsolutePath());
+        if(loader.equals(LoaderType.FABRIC)) {
+            baseCommand.add("-DFabricMcEmu= net.minecraft.client.main.Main");
+        }
+        // TODO: -Duser.language=en
 
         try {
             if (VersionInfo.supportsAddOpens(VersionInfo.getRequiredJavaVersion(version))) {
@@ -506,6 +589,15 @@ public class MinecraftLauncher {
         command.add("-cp");
         command.add(cp.toString());
         String mainClass = versionInfo.get("mainClass").getAsString();
+        if(loader.equals(LoaderType.FABRIC)) {
+            JsonObject fabricVersionJson = getFabricVersionJson(INSTANCE_DIR);
+            if (fabricVersionJson != null && fabricVersionJson.has("mainClass")) {
+                mainClass = fabricVersionJson.get("mainClass").getAsString();
+                ClientLogger.log("Using Fabric main class: " + mainClass, "INFO", "MinecraftLauncher");
+            } else {
+                ClientLogger.log("Failed to get Fabric main class from version json, using vanilla main class: " + mainClass, "WARN", "MinecraftLauncher");
+            }
+        }
         command.add(mainClass);
 
         command.add("--username"); command.add(username);
@@ -544,10 +636,11 @@ public class MinecraftLauncher {
             }), "mc-stderr-reader").start();
 
             boolean exited;
-            try { exited = process.waitFor(10, TimeUnit.SECONDS); } catch (InterruptedException e) { exited = false; }
+         try { exited = process.waitFor(10, TimeUnit.SECONDS); } catch (InterruptedException e) { exited = false; }
 
             if (!exited) {
                 ClientLogger.log("Minecraft process started and is running.", "INFO", "MinecraftLauncher");
+                onComplete.ifPresent(Runnable::run);
                 return;
             } else {
                 int exit = process.exitValue();

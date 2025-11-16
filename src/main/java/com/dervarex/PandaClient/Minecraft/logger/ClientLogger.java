@@ -1,7 +1,6 @@
 package com.dervarex.PandaClient.Minecraft.logger;
 
 import com.dervarex.PandaClient.GUI.WebSocket.NotificationServer.NotificationServer;
-import com.dervarex.PandaClient.GUI.WebSocket.logstate.LogstateServer;
 import org.json.JSONObject;
 
 import java.io.File;

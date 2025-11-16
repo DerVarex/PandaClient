@@ -5,6 +5,7 @@ import com.dervarex.PandaClient.GUI.WebSocket.NotificationServer.NotificationSer
 import com.dervarex.PandaClient.Minecraft.MinecraftLauncher;
 import com.dervarex.PandaClient.Minecraft.Profile.Profile;
 import com.dervarex.PandaClient.Minecraft.Profile.ProfileManagement;
+import com.dervarex.PandaClient.Minecraft.loader.Fabric;
 import com.dervarex.PandaClient.Minecraft.loader.LoaderType;
 import fi.iki.elonen.NanoHTTPD;
 import com.dervarex.PandaClient.Auth.AuthManager;
@@ -15,6 +16,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Optional;
 
 import static com.dervarex.PandaClient.utils.file.getPandaClientFolder.getPandaClientFolder;
 
@@ -86,7 +88,24 @@ public class ModServer extends NanoHTTPD {
                 File instanceFolder = new File(new File(getPandaClientFolder(), "instances"), target.getProfileName());
                 // Spiel starten (launchMc = true)
                 ClientLogger.log("Launching instance: " + target.getProfileName(), "INFO", "ModServer");
-                MinecraftLauncher.LaunchMinecraft(target.getVersionId(), user.getUsername(), user.getUuid(), user.getAccessToken(), instanceFolder, true);
+                if (target.getLoader() == LoaderType.FABRIC) {
+                    Profile finalTarget = target;
+
+                    fabricInstall(finalTarget);
+
+                } else {
+                    MinecraftLauncher.LaunchMinecraft(
+                            target.getVersionId(),
+                            LoaderType.VANILLA,
+                            user.getUsername(),
+                            user.getUuid(),
+                            user.getAccessToken(),
+                            instanceFolder,
+                            true,
+                            Optional.empty()
+                    );
+                }
+
                 NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.INFO, "Launching " + target.getProfileName());
                 return jsonResponse(new JSONObject().put("success", true).put("launched", target.getProfileName()).toString());
             } catch (Exception e) {
@@ -119,14 +138,8 @@ public class ModServer extends NanoHTTPD {
                 String modloader = params.optString("modloader", "");
                 LoaderType loader = LoaderType.fromString(modloader);
 
-                String profileimageParam = params.optString("image", "");
-                File profileImageFile = null;
-                if (!profileimageParam.isEmpty() && !profileimageParam.equals("null")) {
-                    profileImageFile = new File(profileimageParam);
-                }
-
                 ProfileManagement pm = new ProfileManagement();
-                pm.createProfile(name, version, loader, profileImageFile);
+                pm.createProfile(name, version, loader);
 
                 ClientLogger.log("Instance created: " + name, "INFO", "ModServer");
 
@@ -232,5 +245,10 @@ public class ModServer extends NanoHTTPD {
         res.addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
         res.addHeader("Access-Control-Allow-Headers", "Content-Type");
         return res;
+    }
+
+    public void fabricInstall(Profile profile) {
+        Fabric fabric = new Fabric();
+        fabric.install(profile.getVersionId(), new File(new File(getPandaClientFolder(), "instances"), profile.getProfileName()), profile.getProfileName());
     }
 }

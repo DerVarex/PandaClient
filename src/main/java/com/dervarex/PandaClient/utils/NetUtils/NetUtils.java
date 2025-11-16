@@ -1,9 +1,10 @@
 package com.dervarex.PandaClient.utils.NetUtils;
 
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.Socket;
-import java.net.URL;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.*;
 
 public class NetUtils {
     /*
@@ -30,8 +31,27 @@ public class NetUtils {
             return false;
         }
     }
-    public static String urlToString(URL url) {
-        return url.toString();
+
+    public static JSONObject getJsonFromUrl(String urlString) throws Exception {
+        // Verbindung aufbauen
+        URL url = new URL(urlString);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestProperty("Accept", "application/json");
+        conn.setRequestProperty("User-Agent", "PandaClient-Downloader"); // GitHub mag das
+        conn.setConnectTimeout(5000);
+        conn.setReadTimeout(5000);
+
+        // Antwort lesen
+        BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        StringBuilder response = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            response.append(line);
+        }
+        reader.close();
+
+        // JSON parsen
+        return new JSONObject(response.toString());
     }
 
 }

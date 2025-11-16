@@ -21,18 +21,15 @@ import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
 
 public class ProfileManagement {
     // profileImagePath can be null - if it's null, the standard image will be used
-    public void createProfile(String profileName, String versionId, LoaderType loader, File profileImage){
+    public void createProfile(String profileName, String versionId, LoaderType loader){
         if(profileName == null || profileName.isEmpty()) {
             throw new IllegalArgumentException("Profile name darf nicht null oder leer sein!");
         }
-
-        String imagePath = (profileImage != null) ? profileImage.getAbsolutePath() : "images/default.png";
 
         JSONObject profile = new JSONObject();
         profile.put("profileName", profileName);
         profile.put("versionId", versionId);
         profile.put("loader", loader.toString());
-        profile.put("profileImagePath", imagePath);
 
         // Profilordner erstellen
 
@@ -57,8 +54,6 @@ public class ProfileManagement {
         /*if(loader == LoaderType.FORGE) {
             installForge = true;
         } */
-
-        MinecraftLauncher.LaunchMinecraft(versionId, User.getUsername(), User.getUuid(), User.getAccessToken(), profileFolder, false);
     }
     public Profile loadProfile(File profileFile){
         try {
@@ -68,11 +63,9 @@ public class ProfileManagement {
             String name = obj.getString("profileName");
             String versionId = obj.getString("versionId");
             LoaderType loader = LoaderType.fromString(obj.optString("loader")); // safer
-            String imagePath = obj.optString("profileImagePath", "images/default.png");
 
             // Profile Object bauen
             Profile.ProfileFactory factory = new Profile.ProfileFactory(name, versionId, loader);
-            factory.setProfileImagePath(imagePath);
 
             return factory.build(); // fertiges Profil zurückgeben
 
