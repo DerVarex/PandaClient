@@ -92,6 +92,16 @@ public class ModServer extends NanoHTTPD {
                     Profile finalTarget = target;
 
                     fabricInstall(finalTarget);
+                    MinecraftLauncher.LaunchMinecraft(
+                            target.getVersionId(),
+                            LoaderType.FABRIC,
+                            AuthManager.getUser().getUsername(),
+                            AuthManager.getUser().getUuid(),
+                            AuthManager.getUser().getAccessToken(),
+                            instanceFolder,
+                            true,
+                            Optional.empty()
+                    );
 
                 } else {
                     MinecraftLauncher.LaunchMinecraft(
