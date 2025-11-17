@@ -48,7 +48,7 @@ public class Fabric {
         if (!verDir.exists() || !verDir.isDirectory()) {
             System.err.println("⚠️ 'versions' directory not found at: " + verDir.getAbsolutePath());
             // Fabric not installed
-            alreadyInstalled = false; // this means it is save not installed yet
+            alreadyInstalled = false; // this means it is not installed yet
         }
 
         if (alreadyInstalled) { //an check if it's a working installation hahaha
@@ -102,18 +102,6 @@ public class Fabric {
             } else {
                 System.out.println("❌ Fabric installation failed with exit code " + exitCode);
             }
-
-            // 4. Launch Minecraft after installation
-            MinecraftLauncher.LaunchMinecraft(
-                    version,
-                    LoaderType.FABRIC,
-                    AuthManager.getUser().getUsername(),
-                    AuthManager.getUser().getUuid(),
-                    AuthManager.getUser().getAccessToken(),
-                    instanceDir,
-                    true,
-                    Optional.empty()
-            );
 
         } catch (Exception e) {
             e.printStackTrace();
