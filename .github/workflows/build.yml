@@ -1,0 +1,38 @@
+name: Build PandaClient
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - name: Build JAR
+        run: |
+          ./mvnw clean package -DskipTests
+
+      - name: Package with jpackage
+        run: |
+          mkdir dist
+          jpackage --name PandaClient-Linux --input target --main-jar PandaClient-1.0-SNAPSHOT.jar --main-class com.dervarex.PandaClient.Main --type deb --icon electron/images/logo.png --app-version 2.1 --dest dist
+          jpackage --name PandaClient-Windows --input target --main-jar PandaClient-1.0-SNAPSHOT.jar --main-class com.dervarex.PandaClient.Main --type exe --icon electron/images/logo.png --app-version 2.1 --dest dist
+          jpackage --name PandaClient-Mac --input target --main-jar PandaClient-1.0-SNAPSHOT.jar --main-class com.dervarex.PandaClient.Main --type dmg --icon electron/images/logo.png --app-version 2.1 --dest dist
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PandaClient-Builds
+          path: dist/
