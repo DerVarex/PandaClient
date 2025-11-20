@@ -1,7 +1,6 @@
 package com.dervarex.PandaClient.Minecraft.Profile;
 
 import com.dervarex.PandaClient.Auth.AuthManager;
-import com.dervarex.PandaClient.Minecraft.MinecraftLauncher;
 import com.dervarex.PandaClient.Minecraft.loader.LoaderType;
 import com.dervarex.PandaClient.utils.file.getPandaClientFolder;
 import com.google.gson.Gson;
@@ -14,7 +13,10 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
@@ -104,5 +106,105 @@ public class ProfileManagement {
         List<Profile> profiles = getProfiles();
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
         return gson.toJson(profiles);
+    }
+    public Profile getProfileByName(String profileName) {
+        List<Profile> profiles = getProfiles();
+        for (Profile profile : profiles) {
+            if (profile.getProfileName().equals(profileName)) {
+                return profile;
+            }
+        }
+        return null; // Profil nicht gefunden
+    }
+    public List<String> getMods(Profile profile) {
+        List<String> mods = new ArrayList<>();
+        File modsDir = new File(
+                new File(getPandaClientFolder.getPandaClientFolder(), "instances"),
+                profile.getProfileName() + File.separator + "mods"
+        );
+
+        if (!modsDir.exists() || !modsDir.isDirectory()) {
+            return mods; // doesn't exist, return empty list
+        }
+
+        for (File modFile : modsDir.listFiles((dir, name) -> name.endsWith(".jar"))) {
+            mods.add(modFile.getName());
+        }
+
+        return mods;
+    }
+    public JSONObject getModsAsJson(Profile profile) {
+        JSONObject ModsJson = new JSONObject();
+        List<String> mods = getMods(profile);
+        for(String mod : mods) {
+            ModsJson.append("mods", mod);
+        }
+        return ModsJson;
+    }
+    public void editProfileName(Profile profile, String newName) {
+        if (profile == null) {
+            ClientLogger.log("editProfileName called with null profile", "ERROR", "ProfileManagement");
+            return;
+        }
+
+        File instancesDir = new File(getPandaClientFolder.getPandaClientFolder(), "instances");
+        File oldFolder = new File(instancesDir, profile.getProfileName());
+        File newFolder = new File(instancesDir, newName);
+
+        try {
+            if (!oldFolder.exists()) {
+                ClientLogger.log("Old profile folder does not exist: " + oldFolder.getAbsolutePath(), "ERROR", "ProfileManagement");
+                return;
+            }
+
+            // Try atomic / simple move first
+            try {
+                Files.move(oldFolder.toPath(), newFolder.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException moveEx) {
+                ClientLogger.log("Atomic move failed, attempting copy-delete fallback: " + moveEx.getMessage(), "WARN", "ProfileManagement");
+                // Fallback: copy all files then delete old folder
+                Files.walk(oldFolder.toPath()).forEach(sourcePath -> {
+                    try {
+                        Path relative = oldFolder.toPath().relativize(sourcePath);
+                        Path targetPath = newFolder.toPath().resolve(relative);
+                        if (Files.isDirectory(sourcePath)) {
+                            if (!Files.exists(targetPath)) Files.createDirectories(targetPath);
+                        } else {
+                            if (!Files.exists(targetPath.getParent())) Files.createDirectories(targetPath.getParent());
+                            Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                        }
+                    } catch (IOException io) {
+                        throw new RuntimeException(io);
+                    }
+                });
+                // delete old folder recursively
+                Files.walk(oldFolder.toPath())
+                        .sorted(Comparator.reverseOrder())
+                        .map(Path::toFile)
+                        .forEach(File::delete);
+            }
+
+            File jsonFile = new File(newFolder, "profile.json");
+            if (!jsonFile.exists()) {
+                ClientLogger.log("Profile JSON file does not exist for profile: " + newFolder.getName(), "ERROR", "ProfileManagement");
+                return;
+            }
+
+            String content = Files.readString(jsonFile.toPath());
+            JSONObject obj = new JSONObject(content);
+
+            obj.put("profileName", newName);
+            obj.put("versionId", profile.getVersionId());
+            obj.put("loader", profile.getLoader().toString());
+
+            try (FileWriter file = new FileWriter(jsonFile)) {
+                file.write(obj.toString(4));
+            }
+
+        } catch (Exception e) {
+            StringWriter sw = new StringWriter();
+            e.printStackTrace(new PrintWriter(sw));
+            ClientLogger.log("Failed to edit profile: " + sw.toString(), "ERROR", "ProfileManagement");
+        }
     }
 }

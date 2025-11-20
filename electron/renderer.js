@@ -1,5 +1,11 @@
 console.log('renderer.js loaded');
 
+// Ensure instance manager starts hidden on load
+window.addEventListener('DOMContentLoaded', () => {
+    const im = document.getElementById('instance-manager');
+    if (im) im.classList.add('hidden');
+});
+
 const imageInput = document.getElementById("image");
 
 document.getElementById("create-instance-form").addEventListener("submit", async (e) => {
@@ -296,6 +302,7 @@ window.openSelectInstanceWindow = function() {
 window.closeSelectInstanceWindow = function() {
     document.getElementById('select-instance-window').classList.add('hidden');
 };
+
 // --- END GLOBAL MODAL OPEN/CLOSE FUNCTIONS ---
 
 document.addEventListener('mousedown', function(event) {
@@ -391,14 +398,173 @@ window.openPandaClientFolder = async function() {
     }
 };
 
+// --- Instance Manager (list + detail) ---
 
+let managerInstancesCache = [];
+let managerActiveIndex = -1;
+
+function renderInstanceListPanel(instances) {
+    const panel = document.getElementById('instances-list-panel');
+    if (!panel) return;
+    panel.innerHTML = '';
+
+    if (!instances.length) {
+        const empty = document.createElement('div');
+        empty.style.color = '#9ca3af';
+        empty.style.fontSize = '12px';
+        empty.style.padding = '6px 4px';
+        empty.textContent = 'No instances yet.';
+        panel.appendChild(empty);
+        return;
+    }
+
+    instances.forEach((inst, idx) => {
+        const item = document.createElement('div');
+        item.className = 'instance-list-item' + (idx === managerActiveIndex ? ' active' : '');
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'instance-list-name';
+        nameSpan.textContent = inst.name;
+
+        const subSpan = document.createElement('span');
+        subSpan.className = 'instance-list-sub';
+        subSpan.textContent = `${inst.loader} ${inst.version}`.trim();
+
+        item.appendChild(nameSpan);
+        item.appendChild(subSpan);
+
+        item.onclick = () => {
+            managerActiveIndex = idx;
+            renderInstanceListPanel(managerInstancesCache);
+            renderInstanceDetail(inst);
+        };
+
+        panel.appendChild(item);
+    });
+}
+
+function renderInstanceDetail(inst) {
+    const empty = document.getElementById('instance-detail-empty');
+    const detail = document.getElementById('instance-detail');
+    if (!empty || !detail) return;
+
+    if (!inst) {
+        empty.classList.remove('hidden');
+        detail.classList.add('hidden');
+        detail.innerHTML = '';
+        return;
+    }
+
+    empty.classList.add('hidden');
+    detail.classList.remove('hidden');
+    detail.innerHTML = '';
+
+    const header = document.createElement('div');
+    header.className = 'instance-detail-header';
+
+    const title = document.createElement('div');
+    title.className = 'instance-detail-title';
+    title.textContent = inst.name;
+
+    const chips = document.createElement('div');
+    chips.className = 'instance-detail-chips';
+
+    const chipLoader = document.createElement('div');
+    chipLoader.className = 'instance-chip';
+    chipLoader.textContent = inst.loader;
+
+    const chipVersion = document.createElement('div');
+    chipVersion.className = 'instance-chip';
+    chipVersion.textContent = inst.version || 'Unknown version';
+
+    chips.appendChild(chipLoader);
+    chips.appendChild(chipVersion);
+
+    header.appendChild(title);
+    header.appendChild(chips);
+
+    const main = document.createElement('div');
+    main.className = 'instance-detail-main';
+
+    const iconWrap = document.createElement('div');
+    iconWrap.className = 'instance-detail-icon';
+    const img = document.createElement('img');
+    img.src = inst.imagePath || 'images/default.png';
+    img.alt = inst.name;
+    iconWrap.appendChild(img);
+
+    const fields = document.createElement('div');
+    fields.className = 'instance-detail-fields';
+
+    const fProfile = document.createElement('div');
+    fProfile.innerHTML = `<strong>Profile name:</strong> ${inst.name}`;
+
+    const fLoader = document.createElement('div');
+    fLoader.innerHTML = `<strong>Loader:</strong> ${inst.loader}`;
+
+    const fVersion = document.createElement('div');
+    fVersion.innerHTML = `<strong>Version:</strong> ${inst.version || 'Unknown'}`;
+
+    fields.appendChild(fProfile);
+    fields.appendChild(fLoader);
+    fields.appendChild(fVersion);
+
+    main.appendChild(iconWrap);
+    main.appendChild(fields);
+
+    const footer = document.createElement('div');
+    footer.className = 'instance-detail-footer';
+
+    const btnSelect = document.createElement('button');
+    btnSelect.className = 'instance-btn';
+    btnSelect.textContent = 'Use for Launch';
+    btnSelect.onclick = () => {
+        selectedInstance = inst;
+        updateLaunchButton();
+        showNotification('INFO', `Selected ${inst.name} as active instance`);
+    };
+
+    const btnLaunch = document.createElement('button');
+    btnLaunch.className = 'instance-btn instance-btn-primary';
+    btnLaunch.textContent = 'Launch now';
+    btnLaunch.onclick = async () => {
+        selectedInstance = inst;
+        updateLaunchButton();
+        await startGame();
+    };
+
+    // Placeholder for future edit functionality
+    const btnEdit = document.createElement('button');
+    btnEdit.className = 'instance-btn';
+    btnEdit.textContent = 'Edit (soon)';
+    btnEdit.disabled = true;
+
+    footer.appendChild(btnSelect);
+    footer.appendChild(btnLaunch);
+    footer.appendChild(btnEdit);
+
+    detail.appendChild(header);
+    detail.appendChild(main);
+    detail.appendChild(footer);
+}
+
+window.openInstanceManager = function() {
+    // Navigate to dedicated instance manager page
+    window.location.href = 'instance-manager.html';
+};
+
+window.closeInstanceManager = function() {
+    // No-op in main launcher now; kept for backward compatibility
+};
 
 checkLogin();
 console.log("Login checked");
 
 makeDraggable('select-instance-window', '.select-instance-header');
-makeDraggable('instances-window', '.instances-header');
+//makeDraggable('instance-manager', '.instance-manager-header');
 makeDraggable('login-window', '.login-header');
 makeDraggable('create-instance-window', '.create-instance-header');
+
+closeInstanceManager();
 
 fetchInstances();

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PandaClient - Edit Instance</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="edit-instance.css">
+</head>
+<body>
+<div class="instedit-root page-root">
+    <div class="instedit-toolbar pc-toolbar">
+        <div class="pc-toolbar-title">Edit Instance</div>
+        <div class="pc-toolbar-actions instedit-toolbar-actions">
+            <button class="pc-btn" onclick="window.location.href='instance-manager.html'">Back to Instance Manager</button>
+        </div>
+    </div>
+    <div class="instedit-main">
+        <div class="instedit-card pc-card">
+            <div class="instedit-header">
+                <div>
+                    <div class="instedit-title" id="instedit-name">Instance</div>
+                    <div class="instedit-subtitle" id="instedit-subtitle">Loader · Version</div>
+                </div>
+                <div class="pc-chip instedit-badge" id="instedit-badge">PROFILE</div>
+            </div>
+            <form id="instedit-form" class="instedit-form">
+                <div class="instedit-field">
+                    <label for="instedit-name-input">Instance Name</label>
+                    <input id="instedit-name-input" name="name" type="text" autocomplete="off">
+                </div>
+                <div class="instedit-footer">
+                    <button type="button" class="instedit-btn" onclick="window.location.href='instance-manager.html'">Cancel</button>
+                    <button type="submit" class="instedit-btn primary">Save Changes</button>
+                </div>
+                <div id="instedit-message" class="instedit-message"></div>
+            </form>
+        </div>
+    </div>
+</div>
+<script src="renderer-edit-instance.js"></script>
+</body>
+</html>

@@ -62,6 +62,14 @@ nav button {
     color: white;
     cursor: pointer;
 }
+#openinstancemanagerbtn, #openinstancemanagerbtn img {
+    -webkit-app-region: no-drag;
+    margin-left: 5px;
+    background: transparent;
+    border: none;
+    color: white;
+    cursor: pointer;
+}
 #instancesbtn {
     -webkit-app-region: no-drag;
     margin-left: 5px;
@@ -415,3 +423,290 @@ nav button {
 #logstate-text {
     color: #eee;
 }
+
+/* =======================
+   Instance Manager Window
+   ======================= */
+#instance-manager {
+    position: absolute;
+    top: 90px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 780px;
+    max-width: 90vw;
+    height: 380px;
+    max-height: 70vh;
+    background: rgba(15, 15, 15, 0.96);
+    border-radius: 16px;
+    box-shadow: 0 18px 40px rgba(0,0,0,0.7);
+    color: #f9fafb;
+    font-family: sans-serif;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 3000;
+}
+
+.instance-manager-header {
+    height: 40px;
+    padding: 6px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(90deg, #111827, #1f2933);
+    border-bottom: 1px solid #374151;
+    -webkit-app-region: no-drag;
+}
+
+.instance-manager-header span {
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-size: 12px;
+    color: #9ca3af;
+}
+
+.instance-manager-header .close-btn {
+    background: transparent;
+    border: none;
+    color: #9ca3af;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+}
+
+.instance-manager-header .close-btn:hover {
+    background: rgba(55,65,81,0.7);
+    color: #f9fafb;
+}
+
+.instance-manager-body {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 0;
+    background: radial-gradient(circle at top left, rgba(37,99,235,0.16), transparent 55%),
+                radial-gradient(circle at bottom right, rgba(16,185,129,0.16), transparent 55%),
+                #05060a;
+}
+
+.instance-manager-left {
+    border-right: 1px solid #1f2937;
+    display: flex;
+    flex-direction: column;
+}
+
+.instance-manager-left-header {
+    padding: 8px 12px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #9ca3af;
+    border-bottom: 1px solid #111827;
+}
+
+.instances-list-panel {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 8px 8px 8px;
+}
+
+.instance-list-item {
+    padding: 6px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-bottom: 4px;
+    font-size: 12px;
+    color: #e5e7eb;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border: 1px solid transparent;
+    transition: background 0.15s, border-color 0.15s, transform 0.08s;
+}
+
+.instance-list-item span.instance-list-name {
+    font-weight: 500;
+}
+
+.instance-list-item span.instance-list-sub {
+    font-size: 11px;
+    color: #9ca3af;
+}
+
+.instance-list-item:hover {
+    background: rgba(31,41,55,0.85);
+    border-color: rgba(55,65,81,0.9);
+}
+
+.instance-list-item.active {
+    background: linear-gradient(135deg, rgba(59,130,246,0.28), rgba(37,99,235,0.16));
+    border-color: rgba(59,130,246,0.9);
+}
+
+.instance-manager-right {
+    padding: 12px 14px 14px 14px;
+    display: flex;
+    flex-direction: column;
+}
+
+.instance-detail-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: #9ca3af;
+    text-align: center;
+}
+
+.instance-detail {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.instance-detail-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.instance-detail-title {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.instance-detail-chips {
+    display: flex;
+    gap: 6px;
+}
+
+.instance-chip {
+    font-size: 10px;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(55,65,81,0.9);
+    background: rgba(17,24,39,0.9);
+    color: #9ca3af;
+}
+
+.instance-detail-main {
+    display: flex;
+    gap: 12px;
+    margin-top: 6px;
+}
+
+.instance-detail-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 14px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: radial-gradient(circle at 20% 20%, rgba(248,250,252,0.26), transparent 60%),
+                radial-gradient(circle at 80% 80%, rgba(37,99,235,0.38), transparent 70%);
+}
+
+.instance-detail-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.instance-detail-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+}
+
+.instance-detail-fields div strong {
+    color: #e5e7eb;
+    font-weight: 500;
+}
+
+.instance-detail-footer {
+    margin-top: auto;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.instance-detail-footer .instance-btn {
+    font-size: 11px;
+}
+
+/* =======================
+   Fullscreen Pages (Instance Manager, Edit Instance)
+   ======================= */
+.page-root {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+}
+
+.pc-toolbar {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    background: rgba(0,0,0,0.72);
+    border-bottom: 1px solid #111827;
+    -webkit-app-region: drag;
+}
+.pc-toolbar .pc-toolbar-title {
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    font-size: 14px;
+    text-transform: uppercase;
+    color: #9ca3af;
+}
+.pc-toolbar .pc-toolbar-actions {
+    display: flex;
+    gap: 8px;
+    -webkit-app-region: no-drag;
+}
+
+/* Buttons (shared) */
+.pc-btn {
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid #374151;
+    background: #111827;
+    color: #e5e7eb;
+    font-size: 13px;
+    cursor: pointer;
+}
+.pc-btn:hover { background: #1f2937; }
+.pc-btn.primary {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+}
+.pc-btn.primary:hover { background: #1d4ed8; }
+
+/* Chips */
+.pc-chip {
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(17,24,39,0.9);
+    border: 1px solid #374151;
+    color: #9ca3af;
+}
+
+/* Cards */
+.pc-card {
+    background: rgba(15,23,42,0.96);
+    border-radius: 16px;
+    border: 1px solid #111827;
+    box-shadow: 0 18px 40px rgba(0,0,0,0.7);
+}
+
+/* Removed per-page styles; see instance-manager.css and edit-instance.css for page-specific styling */

@@ -28,6 +28,41 @@ public class ModServer extends NanoHTTPD {
     @Override
     public Response serve(IHTTPSession session) {
         String uri = session.getUri();
+        //--- /edit-instance ---
+        if ("/edit-instance".equals(uri)) {
+            try {
+                // Body auslesen
+                int contentLength = Integer.parseInt(session.getHeaders().getOrDefault("content-length", "0"));
+                byte[] buffer = new byte[contentLength];
+                session.getInputStream().read(buffer, 0, contentLength);
+                String body = new String(buffer, StandardCharsets.UTF_8);
+
+                // JSON parsen
+                JSONObject params = new JSONObject(body);
+
+                String profileName = params.optString("id", "");
+                String newName = params.optString("name", "");
+                ProfileManagement pm = new ProfileManagement();
+                Profile profile = pm.getProfileByName(profileName);
+                if (profile == null) {
+                    throw new Exception("Profile not found: " + profileName);
+                }
+
+                pm.editProfileName(profile, newName);
+
+
+
+
+                ClientLogger.log("Instance edited: " + profileName, "INFO", "ModServer");
+
+                return jsonResponse("{\"success\":true}");
+            } catch (Exception e) {
+                ClientLogger.log("Edit instance failed: " + e.getMessage(), "ERROR", "ModServer");
+                e.printStackTrace();
+                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Error while editing Instance: " + e.getMessage());
+                return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
+            }
+        }
         // --- /openPandaClientFolder ---
         if ("/openPandaClientFolder".equals(uri)) {
             try {
@@ -123,6 +158,24 @@ public class ModServer extends NanoHTTPD {
                 e.printStackTrace();
                 NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Launch failed: " + e.getMessage());
                 return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
+            }
+        }
+        if("/mods".equals(uri)) {
+            try {
+                // Body auslesen
+                int contentLength = Integer.parseInt(session.getHeaders().getOrDefault("content-length", "0"));
+                byte[] buffer = new byte[contentLength];
+                session.getInputStream().read(buffer, 0, contentLength);
+                String body = new String(buffer, StandardCharsets.UTF_8);
+
+                // JSON parsen
+                JSONObject params = new JSONObject(body);
+                String profileName = params.optString("profileName", "");
+                ProfileManagement pm = new ProfileManagement();
+                JSONObject json = pm.getModsAsJson(pm.getProfileByName(profileName));
+                return jsonResponse(json.toString());
+            } catch (IOException e) {
+                throw new RuntimeException(e);
             }
         }
         // --- /instances ---

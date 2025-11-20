@@ -607,6 +607,7 @@ public class MinecraftLauncher {
         command.add("--gameDir"); command.add(INSTANCE_DIR.getAbsolutePath());
         command.add("--assetsDir"); command.add(ASSETS_DIR.getAbsolutePath());
         command.add("--clientId"); command.add(UUID.randomUUID().toString());
+        command.add("--userType"); command.add("msa");
         if (versionInfo.has("assetIndex")) {
             JsonObject assetIndex = versionInfo.getAsJsonObject("assetIndex");
             command.add("--assetIndex");

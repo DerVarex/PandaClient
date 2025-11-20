@@ -1,6 +1,7 @@
 package com.dervarex.PandaClient.Minecraft.Profile;
 
 import com.dervarex.PandaClient.Minecraft.loader.LoaderType;
+import com.google.gson.JsonObject;
 
 public class Profile {
 
@@ -13,6 +14,7 @@ public class Profile {
     public String getProfileName() { return profileName; }
     public String getVersionId() { return versionId; }
     public LoaderType getLoader() { return loader; }
+    // Utils
 
     // ------------------ ProfileFactory ------------------
     public static final class ProfileFactory {
