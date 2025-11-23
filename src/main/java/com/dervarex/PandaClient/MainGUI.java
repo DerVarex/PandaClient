@@ -33,3 +33,4 @@ public class MainGUI {
         ClientLogger.log("Notification server started", "INFO", "MainGUI");
     }
 }
+

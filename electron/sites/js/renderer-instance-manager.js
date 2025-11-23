@@ -1,16 +1,35 @@
 console.log('renderer-instance-manager.js loaded');
 
-// We reuse the normalization from the main renderer for consistency.
+// Cache für Bildpfade
+const badImagePaths = new Set();
+const goodImagePaths = new Set();
+const DEFAULT_IMAGE = 'images/default.png';
+
+function isWindowsPath(p){return /[A-Za-z]:\\/.test(p);} // einfache Erkennung
+
+function resolveImagePath(p) {
+    if (!p) return DEFAULT_IMAGE;
+    // Browser-taugliche URLs direkt zurück
+    if (/^(https?:|file:)/i.test(p)) return p;
+    if (p.startsWith('images/')) return p; // bereits relativ zum sites Verzeichnis
+    // Absolute Linux-Pfade
+    if (p.startsWith('/')) return 'file://' + p;
+    // Windows-Pfade
+    if (isWindowsPath(p)) return 'file:///' + p.replace(/\\/g,'/');
+    return p; // sonst unverändert (evtl. relativer Pfad der funktioniert)
+}
+
 function normalizeInstance(raw) {
     if (!raw || typeof raw !== 'object') return null;
     const loaderRaw = raw.loader || raw.modloader || '';
     const loaderPretty = loaderRaw ? loaderRaw.charAt(0) + loaderRaw.slice(1).toLowerCase() : '';
+    const rawImage = raw.profileImagePath || raw.profileImage || raw.image || '';
     return {
         original: raw,
         name: raw.profileName || raw.name || raw.title || 'Instance',
         version: raw.versionId || raw.version || raw.minecraftVersion || '',
         loader: loaderPretty || 'Unknown',
-        imagePath: raw.profileImagePath || raw.profileImage || raw.image || 'images/default.png'
+        imagePath: resolveImagePath(rawImage) || DEFAULT_IMAGE
     };
 }
 
@@ -62,6 +81,33 @@ function renderImList(instances) {
     });
 }
 
+function loadImageStable(imgEl, candidate) {
+    if (!imgEl) return;
+    if (!candidate || badImagePaths.has(candidate)) {
+        imgEl.src = DEFAULT_IMAGE;
+        return;
+    }
+    // Wenn bereits als gut bekannt -> direkt setzen ohne Preload
+    if (goodImagePaths.has(candidate)) {
+        if (imgEl.src !== candidate) imgEl.src = candidate;
+        return;
+    }
+    // Falls bereits der gewünschte Kandidat angezeigt wird -> nichts tun
+    if (imgEl.src === candidate) return;
+    // Preload
+    const pre = new Image();
+    pre.onload = () => {
+        goodImagePaths.add(candidate);
+        if (!badImagePaths.has(candidate)) imgEl.src = candidate;
+    };
+    pre.onerror = () => {
+        badImagePaths.add(candidate);
+        imgEl.src = DEFAULT_IMAGE;
+        console.warn('[IM] image failed, caching as bad:', candidate);
+    };
+    pre.src = candidate;
+}
+
 function renderImDetail(inst) {
     const empty = document.getElementById('im-empty');
     const detail = document.getElementById('im-detail');
@@ -87,18 +133,14 @@ function renderImDetail(inst) {
 
     const chips = document.createElement('div');
     chips.className = 'im-chips';
-
     const chipLoader = document.createElement('div');
     chipLoader.className = 'im-chip';
     chipLoader.textContent = inst.loader;
-
     const chipVersion = document.createElement('div');
     chipVersion.className = 'im-chip';
     chipVersion.textContent = inst.version || 'Unknown version';
-
     chips.appendChild(chipLoader);
     chips.appendChild(chipVersion);
-
     header.appendChild(title);
     header.appendChild(chips);
 
@@ -108,22 +150,21 @@ function renderImDetail(inst) {
     const iconWrap = document.createElement('div');
     iconWrap.className = 'im-icon-wrap';
     const img = document.createElement('img');
-    img.src = inst.imagePath || 'images/default.png';
     img.alt = inst.name;
+    img.src = DEFAULT_IMAGE; // stabiler Start
     iconWrap.appendChild(img);
+
+    // Stabiles Laden des Kandidaten
+    loadImageStable(img, inst.imagePath);
 
     const fields = document.createElement('div');
     fields.className = 'im-fields';
-
     const fProfile = document.createElement('div');
     fProfile.innerHTML = `<strong>Profile name:</strong> ${inst.name}`;
-
     const fLoader = document.createElement('div');
     fLoader.innerHTML = `<strong>Loader:</strong> ${inst.loader}`;
-
     const fVersion = document.createElement('div');
     fVersion.innerHTML = `<strong>Version:</strong> ${inst.version || 'Unknown'}`;
-
     fields.appendChild(fProfile);
     fields.appendChild(fLoader);
     fields.appendChild(fVersion);
@@ -133,14 +174,6 @@ function renderImDetail(inst) {
 
     const footer = document.createElement('div');
     footer.className = 'im-footer';
-
-//    const btnSelect = document.createElement('button');
-//    btnSelect.className = 'im-btn';
-//    btnSelect.textContent = 'Use for Launch';
-//    btnSelect.onclick = () => {
-//        // In standalone view we just show info; integration with main window can be added later via IPC or shared storage.
-//        alert(`Selected ${inst.name} as launch target (not yet wired to launcher).`);
-//    };
 
     const btnLaunch = document.createElement('button');
     btnLaunch.className = 'im-btn primary';
@@ -165,12 +198,17 @@ function renderImDetail(inst) {
     btnEdit.className = 'im-btn';
     btnEdit.textContent = 'Edit';
     btnEdit.disabled = false;
-    // Assign a click handler — do NOT call openEditMenu immediately during render
     btnEdit.onclick = () => openEditMenu(inst);
 
-//    footer.appendChild(btnSelect);
+    // Neuer Button: Mods anzeigen
+    const btnMods = document.createElement('button');
+    btnMods.className = 'im-btn';
+    btnMods.textContent = 'Mods';
+    btnMods.onclick = () => openModManager(inst);
+
     footer.appendChild(btnLaunch);
     footer.appendChild(btnEdit);
+    footer.appendChild(btnMods);
 
     detail.appendChild(header);
     detail.appendChild(main);
@@ -204,7 +242,7 @@ window.addEventListener('DOMContentLoaded', () => {
 function openEditMenu(instance) {
     // If no instance provided, just open the edit page (create flow)
     if (!instance || !instance.name) {
-        window.location.href = 'edit-instance.html';
+        window.location.href = '/electron/sites/edit-instance.html';
         return;
     }
 
@@ -212,4 +250,10 @@ function openEditMenu(instance) {
     const params = new URLSearchParams();
     params.set('profileName', instance.name);
     window.location.href = `edit-instance.html?${params.toString()}`;
+}
+
+function openModManager(instance) {
+    const params = new URLSearchParams();
+    if (instance && instance.name) params.set('profileName', instance.name);
+    window.location.href = `mod-manager.html?${params.toString()}`;
 }

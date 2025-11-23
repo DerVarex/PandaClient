@@ -191,7 +191,7 @@ public class MinecraftLauncher {
                 fabricVersionJson = new File(file + File.separator + file.getName() + ".json");
             }
         }
-            return fabricVersionJson;
+        return fabricVersionJson;
     }
 
     // ----------------------------- Download & prepare files -----------------------------
@@ -282,13 +282,15 @@ public class MinecraftLauncher {
                                         nativeJarFile.getParentFile().mkdirs();
                                         safeDownload(nativeObj.get("url").getAsString(), nativeJarFile);
                                         count++;
+                                        // Immediately unpack the .so/.dll/.dylib into platform natives folder (flatten)
+                                        unpackNativesInstantSkip(nativeJarFile, PLATFORM_NATIVES_DIR);
                                     } else {
                                         ClientLogger.log("Native jar exists, skipping: " + nativeJarFile.getName(), "INFO", "MinecraftLauncher");
                                     }
                                     downloadedPaths.add(nativePath);
 
-                                    // Immediately unpack the .so/.dll/.dylib into platform natives folder (flatten)
-                                    unpackNatives(nativeJarFile, PLATFORM_NATIVES_DIR);
+//                                    // Immediately unpack the .so/.dll/.dylib into platform natives folder (flatten)
+//                                    unpackNatives(nativeJarFile, PLATFORM_NATIVES_DIR);
                                 }
                             }
                         }
@@ -368,47 +370,70 @@ public class MinecraftLauncher {
      * Entpackt native Bibliotheken aus einem natives-*.jar in ein flaches natives-Verzeichnis.
      * Extrahiert nur Dateitypen: .so, .dll, .dylib und benennt sie flach (keine Unterordner).
      */
-    private static void unpackNatives(File nativeJar, File nativesDir) {
-        try {
-            if (!nativeJar.exists()) {
-                ClientLogger.log("Native JAR not found for unpacking: " + nativeJar.getAbsolutePath(), "WARN", "MinecraftLauncher");
-                return;
-            }
-            Files.createDirectories(nativesDir.toPath());
+//    private static void unpackNatives(File nativeJar, File nativesDir) {
+//        try {
+//            if (!nativeJar.exists()) {
+//                ClientLogger.log("Native JAR not found: " + nativeJar.getAbsolutePath(), "WARN", "MinecraftLauncher");
+//                return;
+//            }
+//
+//            Files.createDirectories(nativesDir.toPath());
+//
+//            // --- FAST CHECK: Existieren ALLE relevanten Dateien schon? ---
+//            boolean allExist = true;
+//            List<String> nativeNames = new ArrayList<>();
+//
+//            try (ZipInputStream zis = new ZipInputStream(new FileInputStream(nativeJar))) {
+//                ZipEntry entry;
+//                while ((entry = zis.getNextEntry()) != null) {
+//                    if (entry.isDirectory()) continue;
+//
+//                    String name = entry.getName().toLowerCase();
+//                    if (name.endsWith(".dll") || name.endsWith(".so") || name.endsWith(".dylib")) {
+//                        String flatName = new File(entry.getName()).getName();
+//                        nativeNames.add(flatName);
+//
+//                        if (!new File(nativesDir, flatName).exists()) {
+//                            allExist = false;
+//                        }
+//                    }
+//                }
+//            }
+//
+//            // Wenn ALLE natives bereits existieren → sofort abbrechen
+//            if (allExist) {
+//                ClientLogger.log("Natives already extracted. Skipping " + nativeJar.getName(), "INFO", "MinecraftLauncher");
+//                return;
+//            }
+//
+//            // --- Normales entpacken ---
+//            try (ZipInputStream zis = new ZipInputStream(new FileInputStream(nativeJar))) {
+//                ZipEntry entry;
+//                while ((entry = zis.getNextEntry()) != null) {
+//                    if (entry.isDirectory()) continue;
+//
+//                    String name = entry.getName().toLowerCase();
+//                    if (name.endsWith(".dll") || name.endsWith(".so") || name.endsWith(".dylib")) {
+//                        File outFile = new File(nativesDir, new File(entry.getName()).getName());
+//                        if (outFile.exists()) continue;
+//
+//                        try (FileOutputStream fos = new FileOutputStream(outFile)) {
+//                            zis.transferTo(fos);
+//                        }
+//
+//                        outFile.setReadable(true, false);
+//                        outFile.setExecutable(true, false);
+//
+//                        ClientLogger.log("Extracted native: " + outFile.getName(), "INFO", "MinecraftLauncher");
+//                    }
+//                }
+//            }
+//
+//        } catch (Exception e) {
+//            ClientLogger.log("Error unpacking natives: " + e.getMessage(), "ERROR", "MinecraftLauncher");
+//        }
+//    }
 
-            try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(new FileInputStream(nativeJar))) {
-                java.util.zip.ZipEntry entry;
-                while ((entry = zis.getNextEntry()) != null) {
-                    if (entry.isDirectory()) continue;
-                    String name = entry.getName();
-                    String lower = name.toLowerCase();
-                    if (lower.endsWith(".so") || lower.endsWith(".dll") || lower.endsWith(".dylib")) {
-                        File outFile = new File(nativesDir, new File(name).getName()); // flatten
-                        if (outFile.exists()) {
-                            ClientLogger.log("Native already exists, skipping: " + outFile.getName(), "INFO", "MinecraftLauncher");
-                            continue;
-                        }
-                        Files.createDirectories(outFile.getParentFile().toPath());
-                        try (FileOutputStream fos = new FileOutputStream(outFile)) {
-                            byte[] buffer = new byte[4096];
-                            int len;
-                            while ((len = zis.read(buffer)) > 0) fos.write(buffer, 0, len);
-                        }
-                        // Set permission (best effort)
-                        try {
-                            outFile.setReadable(true, false);
-                            outFile.setExecutable(true, false);
-                        } catch (Throwable t) {
-                            ClientLogger.log("Could not set permissions on native: " + outFile.getName(), "WARN", "MinecraftLauncher");
-                        }
-                        ClientLogger.log("Extracted native: " + outFile.getName(), "INFO", "MinecraftLauncher");
-                    }
-                }
-            }
-        } catch (IOException e) {
-            ClientLogger.log("Error unpacking natives: " + e.getMessage(), "ERROR", "MinecraftLauncher");
-        }
-    }
 
     /**
      * Start minecraft process with given parameters.
@@ -455,7 +480,7 @@ public class MinecraftLauncher {
         for (File libJar : findAllJars(LIB_DIR)) {
             String name = libJar.getName().toLowerCase();
             if (name.contains("natives") && name.endsWith(".jar")) {
-                unpackNatives(libJar, PLATFORM_NATIVES_DIR);
+                unpackNativesInstantSkip(libJar, PLATFORM_NATIVES_DIR);
             }
         }
 
@@ -477,7 +502,7 @@ public class MinecraftLauncher {
             ClientLogger.log("WARNING: No platform natives found in " + PLATFORM_NATIVES_DIR.getAbsolutePath() + ". Will attempt to re-extract from library jars.", "WARN", "MinecraftLauncher");
             for (File libJar : findAllJars(LIB_DIR)) {
                 if (libJar.getName().toLowerCase().contains("natives") && libJar.getName().toLowerCase().endsWith(".jar")) {
-                    unpackNatives(libJar, PLATFORM_NATIVES_DIR);
+                    unpackNativesInstantSkip(libJar, PLATFORM_NATIVES_DIR);
                 }
             }
         } else {
@@ -637,7 +662,7 @@ public class MinecraftLauncher {
             }), "mc-stderr-reader").start();
 
             boolean exited;
-         try { exited = process.waitFor(10, TimeUnit.SECONDS); } catch (InterruptedException e) { exited = false; }
+            try { exited = process.waitFor(10, TimeUnit.SECONDS); } catch (InterruptedException e) { exited = false; }
 
             if (!exited) {
                 ClientLogger.log("Minecraft process started and is running.", "INFO", "MinecraftLauncher");
@@ -684,24 +709,237 @@ public class MinecraftLauncher {
         return "linux";
     }
 
-    // Helper: extract natives from a JAR (kept for completeness)
-    private static void extractNatives(File nativesJar, File outputDir) throws IOException {
-        try (JarFile jar = new JarFile(nativesJar)) {
-            Enumeration<JarEntry> entries = jar.entries();
-            while (entries.hasMoreElements()) {
-                JarEntry entry = entries.nextElement();
-                if (entry.isDirectory()) continue;
-                File outFile = new File(outputDir, entry.getName());
-                outFile.getParentFile().mkdirs();
-                try (InputStream is = jar.getInputStream(entry);
-                     FileOutputStream os = new FileOutputStream(outFile)) {
-                    byte[] buffer = new byte[4096];
-                    int read;
-                    while ((read = is.read(buffer)) != -1) os.write(buffer, 0, read);
+    // FAST unpack (compat wrapper for existing calls)
+    private static void unpackNatives(File nativeJar, File nativesDir) {
+        try {
+            unpackNativesFast(nativeJar, nativesDir);
+        } catch (IOException e) {
+            ClientLogger.log("Error in unpackNatives: " + e.getMessage(), "ERROR", "MinecraftLauncher");
+        }
+    }
+
+    /**
+     * Optimized unpack that uses marker files + ZipFile central directory scan.
+     * - If all natives listed inside the jar already exist in nativesDir -> create marker and return immediately.
+     * - Otherwise extract only missing native files (flattened).
+     */
+    private static void unpackNativesFast(File nativeJar, File nativesDir) throws IOException {
+        if (nativeJar == null || !nativeJar.exists()) {
+            ClientLogger.log("Native JAR not found: " + (nativeJar == null ? "null" : nativeJar.getAbsolutePath()), "WARN", "MinecraftLauncher");
+            return;
+        }
+
+        Files.createDirectories(nativesDir.toPath());
+
+        String markerName = nativeJar.getName() + ".ok";
+        File marker = new File(nativesDir, markerName);
+
+        // If marker exists and all expected files also exist, skip fast
+        if (marker.exists()) {
+            ClientLogger.log("Marker exists, skipping native extraction: " + nativeJar.getName(), "INFO", "MinecraftLauncher");
+            return;
+        }
+
+        // Use ZipFile to read central directory quickly (no decompression)
+        Map<String, java.util.zip.ZipEntry> nativeEntryMap = new LinkedHashMap<>();
+        try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(nativeJar)) {
+            Enumeration<? extends java.util.zip.ZipEntry> en = zf.entries();
+            while (en.hasMoreElements()) {
+                java.util.zip.ZipEntry ze = en.nextElement();
+                if (ze.isDirectory()) continue;
+                String entryName = ze.getName();
+                String flatName = new File(entryName).getName();
+                String lower = flatName.toLowerCase(Locale.ROOT);
+                if (lower.endsWith(".dll") || lower.endsWith(".so") || lower.endsWith(".dylib")) {
+                    // keep first occurrence for this flat filename
+                    nativeEntryMap.putIfAbsent(flatName, ze);
                 }
+            }
+
+            // If jar contains no natives, create marker to avoid re-scans next time
+            if (nativeEntryMap.isEmpty()) {
+                try {
+                    if (!marker.exists()) marker.createNewFile();
+                    ClientLogger.log("No natives inside jar, created marker for: " + nativeJar.getName(), "INFO", "MinecraftLauncher");
+                } catch (IOException e) {
+                    ClientLogger.log("Failed to create marker: " + e.getMessage(), "WARN", "MinecraftLauncher");
+                }
+                return;
+            }
+
+            // Quick check: are ALL natives already present?
+            boolean allPresent = true;
+            for (String flat : nativeEntryMap.keySet()) {
+                File out = new File(nativesDir, flat);
+                if (!out.exists()) { allPresent = false; break; }
+            }
+            if (allPresent) {
+                // create marker and fast return
+                try {
+                    if (!marker.exists()) marker.createNewFile();
+                    ClientLogger.log("All natives present, skipping extraction for " + nativeJar.getName(), "INFO", "MinecraftLauncher");
+                } catch (IOException e) {
+                    ClientLogger.log("Failed to create marker: " + e.getMessage(), "WARN", "MinecraftLauncher");
+                }
+                return;
+            }
+
+            // Extract only missing entries (use a larger buffer)
+            byte[] buffer = new byte[32 * 1024]; // 32KB buffer
+            boolean extractedAny = false;
+            for (Map.Entry<String, java.util.zip.ZipEntry> me : nativeEntryMap.entrySet()) {
+                String flat = me.getKey();
+                java.util.zip.ZipEntry ze = me.getValue();
+                File outFile = new File(nativesDir, flat);
+                if (outFile.exists()) continue; // already present, skip
+
+                try (InputStream is = zf.getInputStream(ze);
+                     FileOutputStream fos = new FileOutputStream(outFile)) {
+                    int r;
+                    while ((r = is.read(buffer)) != -1) fos.write(buffer, 0, r);
+                } catch (IOException e) {
+                    ClientLogger.log("Failed to extract native " + flat + " from " + nativeJar.getName() + ": " + e.getMessage(), "WARN", "MinecraftLauncher");
+                    // try to delete partial file
+                    try { Files.deleteIfExists(outFile.toPath()); } catch (IOException ignored) {}
+                    continue;
+                }
+
+                // try set permissions
+                try {
+                    outFile.setReadable(true, false);
+                    outFile.setExecutable(true, false);
+                } catch (Throwable ignored) {}
+
+                ClientLogger.log("Extracted native: " + flat, "INFO", "MinecraftLauncher");
+                extractedAny = true;
+            }
+
+            // create/update marker after successful extraction (or even when none extracted but some missing entries handled)
+            try {
+                if (!marker.exists()) marker.createNewFile();
+                else marker.setLastModified(System.currentTimeMillis());
+                ClientLogger.log("Created/updated native marker: " + marker.getName(), "INFO", "MinecraftLauncher");
+            } catch (IOException e) {
+                ClientLogger.log("Failed to create/update marker for " + nativeJar.getName() + ": " + e.getMessage(), "WARN", "MinecraftLauncher");
+            }
+
+            if (!extractedAny) {
+                ClientLogger.log("No natives needed extraction for " + nativeJar.getName(), "INFO", "MinecraftLauncher");
             }
         }
     }
+
+    /**
+     * Optimized version used elsewhere in code: calls unpackNativesFast and handles missing-jar cases.
+     */
+    private static void unpackNativesOptimized(File nativeJar, File nativesDir) throws IOException {
+        unpackNativesFast(nativeJar, nativesDir);
+    }
+    private static void unpackNativesInstantSkip(File nativeJar, File nativesDir) throws IOException {
+        if (nativeJar == null || !nativeJar.exists()) return;
+
+        File marker = new File(nativesDir, nativeJar.getName() + ".ok");
+        if (marker.exists()) return; // komplett sofort skippen
+
+        // Nur falls Marker nicht existiert, extrahieren
+        Files.createDirectories(nativesDir.toPath());
+
+        try (ZipInputStream zis = new ZipInputStream(new FileInputStream(nativeJar))) {
+            ZipEntry entry;
+            byte[] buffer = new byte[16384];
+            while ((entry = zis.getNextEntry()) != null) {
+                if (entry.isDirectory()) continue;
+                String name = new File(entry.getName()).getName();
+                String lower = name.toLowerCase(Locale.ROOT);
+                if (lower.endsWith(".dll") || lower.endsWith(".so") || lower.endsWith(".dylib")) {
+                    File outFile = new File(nativesDir, name);
+                    if (outFile.exists()) continue;
+                    try (FileOutputStream fos = new FileOutputStream(outFile)) {
+                        int len;
+                        while ((len = zis.read(buffer)) > 0) fos.write(buffer, 0, len);
+                    }
+                    outFile.setReadable(true, false);
+                    outFile.setExecutable(true, false);
+                }
+            }
+        }
+
+        marker.createNewFile();
+    }
+
+
+
+    /**
+     * Repair scan: for each marker <jarname>.ok in nativesDir check if all natives are present in that marker's jar.
+     * If missing -> delete marker and re-run unpackNativesFast for that jar.
+     */
+    private static void repairNativesIfMissing(File libsRoot, File nativesDir) {
+        if (libsRoot == null || !libsRoot.exists() || nativesDir == null) return;
+
+        File[] markers = nativesDir.listFiles((dir, name) -> name.endsWith(".ok"));
+        if (markers == null || markers.length == 0) return;
+
+        for (File marker : markers) {
+            String jarName = marker.getName().substring(0, marker.getName().length() - 3); // strip ".ok"
+            File jarFile = findJarByName(libsRoot, jarName);
+            if (jarFile == null) {
+                ClientLogger.log("Marker exists but jar not found: " + jarName + ". Deleting marker.", "WARN", "MinecraftLauncher");
+                try { Files.deleteIfExists(marker.toPath()); } catch (IOException ignored) {}
+                continue;
+            }
+
+            // quick check: read entries from jar and verify existence
+            boolean allPresent = true;
+            try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(jarFile)) {
+                Enumeration<? extends java.util.zip.ZipEntry> en = zf.entries();
+                while (en.hasMoreElements()) {
+                    java.util.zip.ZipEntry ze = en.nextElement();
+                    if (ze.isDirectory()) continue;
+                    String flat = new File(ze.getName()).getName();
+                    String lower = flat.toLowerCase(Locale.ROOT);
+                    if (lower.endsWith(".dll") || lower.endsWith(".so") || lower.endsWith(".dylib")) {
+                        if (!new File(nativesDir, flat).exists()) {
+                            allPresent = false;
+                            break;
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                ClientLogger.log("Failed scanning jar during repair: " + jarFile.getAbsolutePath() + " -> " + e.getMessage(), "WARN", "MinecraftLauncher");
+                allPresent = false;
+            }
+
+            if (!allPresent) {
+                try {
+                    Files.deleteIfExists(marker.toPath());
+                    ClientLogger.log("Missing natives for " + jarName + " — re-extracting.", "WARN", "MinecraftLauncher");
+                    unpackNativesFast(jarFile, nativesDir);
+                } catch (IOException e) {
+                    ClientLogger.log("Failed to re-extract natives for " + jarName + ": " + e.getMessage(), "ERROR", "MinecraftLauncher");
+                }
+            } else {
+                ClientLogger.log("Marker good and all natives present for " + jarName, "INFO", "MinecraftLauncher");
+            }
+        }
+    }
+
+
+    // Hilfs-Funktion: findet eine Jar-Datei rekursiv nach Namen (exakter file name match)
+    private static File findJarByName(File dir, String jarName) {
+        if (dir == null || !dir.exists()) return null;
+        File[] files = dir.listFiles();
+        if (files == null) return null;
+        for (File f : files) {
+            if (f.isDirectory()) {
+                File r = findJarByName(f, jarName);
+                if (r != null) return r;
+            } else if (f.getName().equals(jarName)) {
+                return f;
+            }
+        }
+        return null;
+    }
+
 
     // Version comparator: returns negative if a < b
     private static int compareVersion(String a, String b) {

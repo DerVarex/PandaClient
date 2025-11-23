@@ -1,6 +1,7 @@
 package com.dervarex.PandaClient.Minecraft.logger;
 
 import com.dervarex.PandaClient.GUI.WebSocket.NotificationServer.NotificationServer;
+import com.dervarex.PandaClient.utils.NetUtils.NetUtils;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -65,11 +66,15 @@ public class ClientLogger {
     // level could be INFO, WARNING, ERROR
     public static synchronized void log(String message, String level, String where) {
         try {
+            String formatted = String.format("[%s] %s: %s", level, where, message);
             if (log == null) {
                 // lazy init minimal structure and store messages until start() is called
-                inMemory.add(String.format("[%s] %s: %s", level, where, message));
+                inMemory.add(formatted);
             } else {
-                String formatted = String.format("[%s] %s: %s", level, where, message);
+                if(!NetUtils.isOnline()) {
+                    formatted = String.format("OFFLINE - [%s] %s: %s", level, where, message);
+                }
+
                 // append to logs array
                 if (!log.has("logs")) {
                     org.json.JSONArray arr = new org.json.JSONArray();

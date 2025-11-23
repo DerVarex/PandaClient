@@ -11,6 +11,9 @@ import fi.iki.elonen.NanoHTTPD;
 import com.dervarex.PandaClient.Auth.AuthManager;
 import org.json.JSONObject;
 import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
+import com.dervarex.PandaClient.Minecraft.modrinth.ModrinthDownloader;
+import com.dervarex.PandaClient.Minecraft.modrinth.Category;
+import com.dervarex.PandaClient.Minecraft.modrinth.ModrinthProject;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,14 +31,15 @@ public class ModServer extends NanoHTTPD {
     @Override
     public Response serve(IHTTPSession session) {
         String uri = session.getUri();
+        // Handle CORS preflight for modrinth download specifically
+        if ("/modrinth/download".equals(uri) && session.getMethod() == Method.OPTIONS) {
+            return jsonResponse(new org.json.JSONObject().put("success", true).toString());
+        }
         //--- /edit-instance ---
         if ("/edit-instance".equals(uri)) {
             try {
                 // Body auslesen
-                int contentLength = Integer.parseInt(session.getHeaders().getOrDefault("content-length", "0"));
-                byte[] buffer = new byte[contentLength];
-                session.getInputStream().read(buffer, 0, contentLength);
-                String body = new String(buffer, StandardCharsets.UTF_8);
+                String body = readRequestBody(session);
 
                 // JSON parsen
                 JSONObject params = new JSONObject(body);
@@ -58,7 +62,7 @@ public class ModServer extends NanoHTTPD {
                 return jsonResponse("{\"success\":true}");
             } catch (Exception e) {
                 ClientLogger.log("Edit instance failed: " + e.getMessage(), "ERROR", "ModServer");
-                e.printStackTrace();
+                ClientLogger.log("Stacktrace: " + e, "DEBUG", "ModServer");
                 NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Error while editing Instance: " + e.getMessage());
                 return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
             }
@@ -124,9 +128,7 @@ public class ModServer extends NanoHTTPD {
                 // Spiel starten (launchMc = true)
                 ClientLogger.log("Launching instance: " + target.getProfileName(), "INFO", "ModServer");
                 if (target.getLoader() == LoaderType.FABRIC) {
-                    Profile finalTarget = target;
-
-                    fabricInstall(finalTarget);
+                    fabricInstall(target);
                     MinecraftLauncher.LaunchMinecraft(
                             target.getVersionId(),
                             LoaderType.FABRIC,
@@ -155,7 +157,7 @@ public class ModServer extends NanoHTTPD {
                 return jsonResponse(new JSONObject().put("success", true).put("launched", target.getProfileName()).toString());
             } catch (Exception e) {
                 ClientLogger.log("Launch failed: " + e.getMessage(), "ERROR", "ModServer");
-                e.printStackTrace();
+                ClientLogger.log("Stacktrace: " + e, "DEBUG", "ModServer");
                 NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Launch failed: " + e.getMessage());
                 return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
             }
@@ -163,10 +165,7 @@ public class ModServer extends NanoHTTPD {
         if("/mods".equals(uri)) {
             try {
                 // Body auslesen
-                int contentLength = Integer.parseInt(session.getHeaders().getOrDefault("content-length", "0"));
-                byte[] buffer = new byte[contentLength];
-                session.getInputStream().read(buffer, 0, contentLength);
-                String body = new String(buffer, StandardCharsets.UTF_8);
+                String body = readRequestBody(session);
 
                 // JSON parsen
                 JSONObject params = new JSONObject(body);
@@ -176,6 +175,177 @@ public class ModServer extends NanoHTTPD {
                 return jsonResponse(json.toString());
             } catch (IOException e) {
                 throw new RuntimeException(e);
+            }
+        }
+        // --- /modrinth/search ---
+        if ("/modrinth/search".equals(uri)) {
+            try {
+                // read body if present, otherwise fallback to query params
+                String body = readRequestBody(session);
+                JSONObject params = body.isBlank() ? new JSONObject() : new JSONObject(body);
+                // allow GET-style query params as fallback
+                if (params.isEmpty()) {
+                    Map<String, java.util.List<String>> pmap = session.getParameters();
+                    if (pmap != null) {
+                        for (Map.Entry<String, java.util.List<String>> e : pmap.entrySet()) {
+                            if (e.getValue() != null && !e.getValue().isEmpty()) params.put(e.getKey(), e.getValue().get(0));
+                        }
+                    }
+                }
+
+                String query = params.optString("query", params.optString("q", "")).trim();
+                String catStr = params.optString("category", params.optString("cat", "")).trim();
+                // accept game version filter (frontend may send 'version' or 'gameVersion')
+                String gameVersion = params.optString("version", params.optString("gameVersion", "")).trim();
+                 // accept frontend 'limit' param as well as maxResults/max
+                 int maxResults = 25;
+                 if (params.has("limit")) maxResults = params.optInt("limit", 25);
+                 else if (params.has("maxResults")) maxResults = params.optInt("maxResults", 25);
+                 else if (params.has("max")) maxResults = params.optInt("max", 25);
+                 if (maxResults <= 0) maxResults = 25;
+
+                 ModrinthDownloader downloader = new ModrinthDownloader();
+                 Category category = null;
+                 if (!catStr.isBlank()) {
+                    // Try direct enum match (allow hyphen/underscore variants), then fallback to apiValue match
+                    try {
+                        String enumKey = catStr.replace('-', '_').replace(' ', '_').toUpperCase();
+                        category = Category.valueOf(enumKey);
+                    } catch (IllegalArgumentException ignored) {
+                        for (Category c : Category.values()) {
+                            if (c.apiValue().equalsIgnoreCase(catStr)) { category = c; break; }
+                        }
+                    }
+                }
+
+                java.util.List<ModrinthProject> results = downloader.search(query, category, maxResults, gameVersion.isBlank() ? null : gameVersion);
+                org.json.JSONArray out = new org.json.JSONArray();
+                for (ModrinthProject p : results) {
+                    org.json.JSONObject o = new org.json.JSONObject();
+                    o.put("id", p.getId());
+                    o.put("slug", p.getSlug());
+                    o.put("title", p.getTitle());
+                    o.put("description", p.getDescription());
+                    o.put("latestVersionId", p.getLatestVersionId());
+                    org.json.JSONArray cats = new org.json.JSONArray();
+                    if (p.getCategories() != null) for (String c : p.getCategories()) cats.put(c);
+                    o.put("categories", cats);
+                    out.put(o);
+                }
+                ClientLogger.log("Modrinth search performed: query='" + query + "' results=" + results.size(), "INFO", "ModServer");
+                // Return a consistent JSON object expected by the frontend
+                org.json.JSONObject resp = new org.json.JSONObject();
+                resp.put("success", true);
+                resp.put("results", out);
+                return jsonResponse(resp.toString());
+            } catch (Exception e) {
+                ClientLogger.log("Modrinth search failed: " + e.getMessage(), "ERROR", "ModServer");
+                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Modrinth search failed: " + e.getMessage());
+                return jsonResponse(new org.json.JSONObject().put("success", false).put("error", e.getMessage()).toString());
+            }
+        }
+        // --- /modrinth/download (POST) ---
+        if ("/modrinth/download".equals(uri) && session.getMethod() == Method.POST) {
+            try {
+                String body = readRequestBody(session);
+                JSONObject params = body.isBlank() ? new JSONObject() : new JSONObject(body);
+                // allow fallback to query params
+                if (params.isEmpty()) {
+                    Map<String, java.util.List<String>> pmap = session.getParameters();
+                    if (pmap != null) for (Map.Entry<String, java.util.List<String>> e : pmap.entrySet()) {
+                        if (e.getValue() != null && !e.getValue().isEmpty()) params.put(e.getKey(), e.getValue().get(0));
+                    }
+                }
+                String profileName = params.optString("profileName", "").trim();
+                String versionId = params.optString("versionId", params.optString("version", params.optString("id", ""))).trim();
+                String project = params.optString("project", params.optString("slug", params.optString("projectId", ""))).trim();
+                String gameVersion = params.optString("gameVersion", params.optString("mcVersion", params.optString("minecraftVersion", ""))).trim();
+                String loader = params.optString("loader", params.optString("modloader", "")).trim();
+                if (profileName.isBlank()) {
+                    return jsonResponse(new JSONObject().put("success", false).put("error", "Missing profileName").toString());
+                }
+                if (versionId.isBlank() && project.isBlank()) {
+                    return jsonResponse(new JSONObject().put("success", false).put("error", "Provide either versionId or project").toString());
+                }
+                ProfileManagement pm = new ProfileManagement();
+                Profile profile = pm.getProfileByName(profileName);
+                if (profile == null) return jsonResponse(new JSONObject().put("success", false).put("error", "Profile not found").toString());
+                File modsDir = new File(new File(getPandaClientFolder(), "instances"), profile.getProfileName() + File.separator + "mods");
+                if (!modsDir.exists()) {
+                    boolean created = modsDir.mkdirs();
+                    if (!created) {
+                        ClientLogger.log("Could not create mods directory: " + modsDir.getAbsolutePath(), "ERROR", "ModServer");
+                        return jsonResponse(new JSONObject().put("success", false).put("error", "Failed to create mods directory").toString());
+                    }
+                }
+                ModrinthDownloader md = new ModrinthDownloader();
+                java.io.File downloaded;
+                if (!versionId.isBlank()) {
+                    downloaded = md.downloadVersion(versionId, modsDir);
+                } else {
+                    downloaded = md.downloadByProject(project, modsDir, gameVersion.isBlank() ? null : gameVersion, loader.isBlank() ? null : loader);
+                }
+                if (downloaded == null) {
+                    return jsonResponse(new JSONObject().put("success", false).put("error", "Download failed or version not found").toString());
+                }
+                ClientLogger.log("Downloaded mod " + downloaded.getName() + " (source=" + (versionId.isBlank() ? project : versionId) + ") to instance " + profileName, "INFO", "ModServer");
+                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.INFO, "Downloaded mod: " + downloaded.getName());
+                return jsonResponse(new JSONObject().put("success", true).put("file", downloaded.getName()).toString());
+            } catch (Exception e) {
+                ClientLogger.log("Mod download failed: " + e.getMessage(), "ERROR", "ModServer");
+                ClientLogger.log("Stacktrace: " + e, "DEBUG", "ModServer");
+                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Mod download failed: " + e.getMessage());
+                return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
+            }
+        }
+        // --- /modrinth/download (GET fallback) ---
+        if ("/modrinth/download".equals(uri) && session.getMethod() == Method.GET) {
+            try {
+                Map<String, java.util.List<String>> pmap = session.getParameters();
+                JSONObject params = new JSONObject();
+                if (pmap != null) for (Map.Entry<String, java.util.List<String>> e : pmap.entrySet()) {
+                    if (e.getValue() != null && !e.getValue().isEmpty()) params.put(e.getKey(), e.getValue().get(0));
+                }
+                String profileName = params.optString("profileName", "").trim();
+                String versionId = params.optString("versionId", params.optString("version", params.optString("id", ""))).trim();
+                String project = params.optString("project", params.optString("slug", params.optString("projectId", ""))).trim();
+                String gameVersion = params.optString("gameVersion", params.optString("mcVersion", params.optString("minecraftVersion", ""))).trim();
+                String loader = params.optString("loader", params.optString("modloader", "")).trim();
+                if (profileName.isBlank()) {
+                    return jsonResponse(new JSONObject().put("success", false).put("error", "Missing profileName").toString());
+                }
+                if (versionId.isBlank() && project.isBlank()) {
+                    return jsonResponse(new JSONObject().put("success", false).put("error", "Provide either versionId or project").toString());
+                }
+                ProfileManagement pm = new ProfileManagement();
+                Profile profile = pm.getProfileByName(profileName);
+                if (profile == null) return jsonResponse(new JSONObject().put("success", false).put("error", "Profile not found").toString());
+                File modsDir = new File(new File(getPandaClientFolder(), "instances"), profile.getProfileName() + File.separator + "mods");
+                if (!modsDir.exists()) {
+                    boolean created = modsDir.mkdirs();
+                    if (!created) {
+                        ClientLogger.log("Could not create mods directory: " + modsDir.getAbsolutePath(), "ERROR", "ModServer");
+                        return jsonResponse(new JSONObject().put("success", false).put("error", "Failed to create mods directory").toString());
+                    }
+                }
+                ModrinthDownloader md = new ModrinthDownloader();
+                java.io.File downloaded;
+                if (!versionId.isBlank()) {
+                    downloaded = md.downloadVersion(versionId, modsDir);
+                } else {
+                    downloaded = md.downloadByProject(project, modsDir, gameVersion.isBlank() ? null : gameVersion, loader.isBlank() ? null : loader);
+                }
+                if (downloaded == null) {
+                    return jsonResponse(new JSONObject().put("success", false).put("error", "Download failed or version not found").toString());
+                }
+                ClientLogger.log("Downloaded mod " + downloaded.getName() + " (source=" + (versionId.isBlank() ? project : versionId) + ") to instance " + profileName, "INFO", "ModServer");
+                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.INFO, "Downloaded mod: " + downloaded.getName());
+                return jsonResponse(new JSONObject().put("success", true).put("file", downloaded.getName()).toString());
+            } catch (Exception e) {
+                ClientLogger.log("Mod download failed: " + e.getMessage(), "ERROR", "ModServer");
+                ClientLogger.log("Stacktrace: " + e, "DEBUG", "ModServer");
+                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Mod download failed: " + e.getMessage());
+                return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
             }
         }
         // --- /instances ---
@@ -188,10 +358,7 @@ public class ModServer extends NanoHTTPD {
         if ("/create-instance".equals(uri)) {
             try {
                 // Body auslesen
-                int contentLength = Integer.parseInt(session.getHeaders().getOrDefault("content-length", "0"));
-                byte[] buffer = new byte[contentLength];
-                session.getInputStream().read(buffer, 0, contentLength);
-                String body = new String(buffer, StandardCharsets.UTF_8);
+                String body = readRequestBody(session);
 
                 // JSON parsen
                 JSONObject params = new JSONObject(body);
@@ -209,11 +376,59 @@ public class ModServer extends NanoHTTPD {
                 return jsonResponse("{\"success\":true}");
             } catch (Exception e) {
                 ClientLogger.log("Create instance failed: " + e.getMessage(), "ERROR", "ModServer");
-                e.printStackTrace();
+                ClientLogger.log("Stacktrace: " + e, "DEBUG", "ModServer");
                 NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Error while creating Instance" + e.getMessage());
                 return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
             }
         }
+                     // Neuer Endpoint: /deleteMod
+            if ("/deleteMod".equals(uri)) {
+                try {
+                    String body = readRequestBody(session);
+                    JSONObject params = new JSONObject(body);
+                    String profileName = params.optString("profileName", "");
+                    String modName = params.optString("mod", "");
+                    if (profileName.isBlank() || modName.isBlank()) {
+                        return jsonResponse(new JSONObject().put("success", false).put("error", "Missing profileName or mod").toString());
+                    }
+                    if (modName.contains("/") || modName.contains("\\")) {
+                        return jsonResponse(new JSONObject().put("success", false).put("error", "Invalid mod filename").toString());
+                    }
+                    ProfileManagement pm = new ProfileManagement();
+                    Profile profile = pm.getProfileByName(profileName);
+                    if (profile == null) {
+                        return jsonResponse(new JSONObject().put("success", false).put("error", "Profile not found").toString());
+                    }
+                    File modsDir = new File(new File(getPandaClientFolder(), "instances"), profile.getProfileName() + File.separator + "mods");
+                    if (!modsDir.exists() || !modsDir.isDirectory()) {
+                        return jsonResponse(new JSONObject().put("success", false).put("error", "Mods folder not found").toString());
+                    }
+                    File target = new File(modsDir, modName);
+                    // Sicherheitscheck: Pfad darf nicht aus dem mods-Verzeichnis herausführen
+                    String modsCanonical = modsDir.getCanonicalPath();
+                    String targetCanonical = target.getCanonicalPath();
+                    if (!targetCanonical.startsWith(modsCanonical)) {
+                        return jsonResponse(new JSONObject().put("success", false).put("error", "Illegal path").toString());
+                    }
+                    if (!target.exists() || !target.isFile()) {
+                        return jsonResponse(new JSONObject().put("success", false).put("error", "Mod file not found").toString());
+                    }
+                    boolean deleted = target.delete();
+                    if (deleted) {
+                        ClientLogger.log("Deleted mod " + modName + " from instance " + profileName, "INFO", "ModServer");
+                        NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.INFO, "Deleted mod: " + modName);
+                        return jsonResponse(new JSONObject().put("success", true).put("deleted", modName).toString());
+                    } else {
+                        ClientLogger.log("Failed to delete mod " + modName + " from instance " + profileName, "ERROR", "ModServer");
+                        return jsonResponse(new JSONObject().put("success", false).put("error", "Deletion failed").toString());
+                    }
+                } catch (Exception e) {
+                    ClientLogger.log("Delete mod failed: " + e.getMessage(), "ERROR", "ModServer");
+                    ClientLogger.log("Stacktrace: " + e, "DEBUG", "ModServer");
+                    NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Delete mod failed: " + e.getMessage());
+                    return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
+                }
+            }
         // --- /loginWithToken ---
         if ("/loginWithToken".equals(uri)) {
             try {
@@ -226,6 +441,7 @@ public class ModServer extends NanoHTTPD {
             } catch (Exception e) {
                 NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Error while trying to login with saved Session: " + e.getMessage());
                 ClientLogger.log("LoginWithToken error: " + e.getMessage(), "ERROR", "ModServer");
+                ClientLogger.log("Stacktrace: " + e, "DEBUG", "ModServer");
                 return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
             }
         }
@@ -257,6 +473,7 @@ public class ModServer extends NanoHTTPD {
                 }
             } catch (Exception e) {
                 ClientLogger.log("Login start failed: " + e.getMessage(), "ERROR", "ModServer");
+                ClientLogger.log("Stacktrace: " + e, "DEBUG", "ModServer");
                 NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Error while trying to login: " + e.getMessage());
                 // don't throw; return JSON error
                 JSONObject err = new JSONObject()
@@ -301,6 +518,15 @@ public class ModServer extends NanoHTTPD {
 
     }
 
+    // Helper: read request body according to content-length safely
+    private String readRequestBody(IHTTPSession session) throws IOException {
+        int contentLength = Integer.parseInt(session.getHeaders().getOrDefault("content-length", "0"));
+        if (contentLength <= 0) return "";
+        // readNBytes ensures we actually capture the bytes and avoids ignored-result warnings
+        byte[] data = session.getInputStream().readNBytes(contentLength);
+        return new String(data, StandardCharsets.UTF_8);
+    }
+
     // Hilfsmethode für JSON + CORS
     private Response jsonResponse(String json) {
         Response res = newFixedLengthResponse(Response.Status.OK, "application/json", json);
@@ -315,3 +541,4 @@ public class ModServer extends NanoHTTPD {
         fabric.install(profile.getVersionId(), new File(new File(getPandaClientFolder(), "instances"), profile.getProfileName()), profile.getProfileName());
     }
 }
+

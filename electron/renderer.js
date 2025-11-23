@@ -550,7 +550,7 @@ function renderInstanceDetail(inst) {
 
 window.openInstanceManager = function() {
     // Navigate to dedicated instance manager page
-    window.location.href = 'instance-manager.html';
+    window.location.href = 'sites/instance-manager.html';
 };
 
 window.closeInstanceManager = function() {

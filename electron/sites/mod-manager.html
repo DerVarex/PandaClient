@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PandaClient - Mod Manager</title>
+  <link rel="stylesheet" href="../style.css" />
+  <link rel="stylesheet" href="./css/mod-manager.css" />
+</head>
+<body>
+<div class="mm-root page-root">
+  <div class="mm-toolbar pc-toolbar">
+    <div class="pc-toolbar-title">PandaClient · Mod Manager</div>
+    <div class="pc-toolbar-actions mm-toolbar-actions">
+      <button class="pc-btn" onclick="window.location.href='instance-manager.html'">Back to Instances</button>
+    </div>
+  </div>
+  <div class="mm-main">
+    <div class="mm-left">
+      <div class="mm-left-header">Instances</div>
+      <div id="mm-instance-list" class="mm-left-list"></div>
+      <div class="mm-left-header" style="margin-top:8px;">Search Mods</div>
+      <div class="mm-search-block">
+        <input id="mm-search-query" type="text" placeholder="Search Modrinth..." />
+        <select id="mm-search-category">
+          <option value="">(Any Category)</option>
+          <option value="performance">Performance</option>
+          <option value="utility">Utility</option>
+          <option value="worldgen">WorldGen</option>
+          <option value="decoration">Decoration</option>
+          <option value="magic">Magic</option>
+          <option value="technology">Technology</option>
+          <option value="chat">Chat</option>
+          <option value="tools">Tools</option>
+        </select>
+        <button class="pc-btn" onclick="mmDoSearch()">Search</button>
+      </div>
+      <div id="mm-search-results" class="mm-search-results"></div>
+    </div>
+    <div class="mm-right">
+      <div id="mm-empty" class="mm-empty">
+        <h2>No instance selected</h2>
+        <p>Select an instance on the left to view its mods.</p>
+      </div>
+      <div id="mm-detail" class="hidden">
+        <div class="mm-detail-header">
+          <div class="mm-detail-title" id="mm-detail-title">Instance</div>
+          <div class="mm-chips" id="mm-chips"></div>
+        </div>
+        <div class="mm-mods-wrap">
+          <div class="mm-mods-header">
+            <div class="mm-mods-title">Mods</div>
+            <div class="mm-mods-actions"></div>
+          </div>
+          <div id="mm-mod-list" class="mm-mod-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="./js/renderer-mod-manager.js"></script>
+</body>
+</html>

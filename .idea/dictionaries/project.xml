@@ -2,6 +2,8 @@
   <dictionary name="project">
     <words>
       <w>logstate</w>
+      <w>modrinth</w>
+      <w>resourcepack</w>
     </words>
   </dictionary>
 </component>
