@@ -398,6 +398,136 @@ window.openPandaClientFolder = async function() {
     }
 };
 
+// Add: open the server overview in a new native window using the preload-exposed API
+window.openServerOverview = async function() {
+    try {
+        const res = await fetch('http://localhost:8800/openServerDashboard', {
+            method: 'GET',
+        });
+        if (!res.ok) {
+            throw new Error('HTTP ' + res.status);
+        }
+        const data = await res.json().catch(() => ({}));
+        console.log('openServerDashboard result', data);
+    } catch (err) {
+        console.error('Failed to open server dashboard', err);
+    }
+};
+
+// --- Server management helpers (backend <-> Electron <-> Swing) ---
+
+async function fetchServers() {
+    try {
+        const res = await fetch('http://localhost:8800/servers');
+        const data = await res.json();
+        console.log('[servers][response]', data);
+        if (!data.success) {
+            showNotification('ERROR', data.error || 'Could not fetch servers');
+            return [];
+        }
+        return Array.isArray(data.servers) ? data.servers : [];
+    } catch (e) {
+        console.error('Error fetching servers:', e);
+        showNotification('ERROR', 'Could not fetch servers');
+        return [];
+    }
+}
+
+async function startServerByName(name) {
+    try {
+        const res = await fetch('http://localhost:8800/server/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        const data = await res.json();
+        console.log('[server/start]', name, data);
+        if (!data.success) {
+            showNotification('ERROR', data.error || `Could not start server ${name}`);
+        } else {
+            showNotification('INFO', `Starting server ${name}`);
+        }
+        return data;
+    } catch (e) {
+        console.error('startServerByName failed:', e);
+        showNotification('ERROR', `Could not start server ${name}`);
+        return { success: false, error: String(e) };
+    }
+}
+
+async function stopServerByName(name) {
+    try {
+        const res = await fetch('http://localhost:8800/server/stop', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        const data = await res.json();
+        console.log('[server/stop]', name, data);
+        if (!data.success) {
+            showNotification('ERROR', data.error || `Could not stop server ${name}`);
+        } else {
+            showNotification('INFO', `Stopping server ${name}`);
+        }
+        return data;
+    } catch (e) {
+        console.error('stopServerByName failed:', e);
+        showNotification('ERROR', `Could not stop server ${name}`);
+        return { success: false, error: String(e) };
+    }
+}
+
+async function killServerByName(name) {
+    try {
+        const res = await fetch('http://localhost:8800/server/kill', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        const data = await res.json();
+        console.log('[server/kill]', name, data);
+        if (!data.success) {
+            showNotification('ERROR', data.error || `Could not kill server ${name}`);
+        } else {
+            showNotification('INFO', `Killed server ${name}`);
+        }
+        return data;
+    } catch (e) {
+        console.error('killServerByName failed:', e);
+        showNotification('ERROR', `Could not kill server ${name}`);
+        return { success: false, error: String(e) };
+    }
+}
+
+async function sendServerCommand(name, command) {
+    try {
+        const res = await fetch('http://localhost:8800/server/command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, command })
+        });
+        const data = await res.json();
+        console.log('[server/command]', name, command, data);
+        if (!data.success) {
+            showNotification('ERROR', data.error || `Command failed on ${name}`);
+        }
+        return data;
+    } catch (e) {
+        console.error('sendServerCommand failed:', e);
+        showNotification('ERROR', `Command failed on ${name}`);
+        return { success: false, error: String(e) };
+    }
+}
+
+// Expose for quick testing / later UI wiring
+window.serverApi = {
+    fetchServers,
+    startServerByName,
+    stopServerByName,
+    killServerByName,
+    sendServerCommand,
+};
+
 // --- Instance Manager (list + detail) ---
 
 let managerInstancesCache = [];

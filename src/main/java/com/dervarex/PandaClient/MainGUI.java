@@ -31,6 +31,9 @@ public class MainGUI {
         }
         NotificationServerStart.startNotificationServer();
         ClientLogger.log("Notification server started", "INFO", "MainGUI");
+
+
+
     }
 }
 

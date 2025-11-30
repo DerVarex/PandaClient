@@ -38,6 +38,7 @@
     </repositories>
 
     <dependencies>
+
         <dependency>
             <groupId>org.nanohttpd</groupId>
             <artifactId>nanohttpd</artifactId>
@@ -84,8 +85,19 @@
             <artifactId>commons-compress</artifactId>
             <version>1.26.2</version>
         </dependency>
+        <dependency>
+            <groupId>com.formdev</groupId>
+            <artifactId>flatlaf</artifactId>
+            <version>3.5</version>
+        </dependency>
+        <dependency>
+            <groupId>com.formdev</groupId>
+            <artifactId>flatlaf-extras</artifactId>
+            <version>3.5</version>
+        </dependency>
+
     </dependencies>
-    
+
     <build>
         <plugins>
             <!-- Compiler -->

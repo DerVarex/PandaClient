@@ -53,9 +53,39 @@ function shutdownBackend(timeoutMs = 1500) {
     });
 }
 
+// Helper to call Java backend endpoint to open Swing server UI
+function callJavaOpenServerDashboard() {
+    return new Promise((resolve) => {
+        const req = http.get("http://127.0.0.1:8800/openServerDashboard", (res) => {
+            let body = "";
+            res.setEncoding("utf8");
+            res.on("data", chunk => body += chunk);
+            res.on("end", () => {
+                try {
+                    const json = JSON.parse(body);
+                    resolve(json);
+                } catch (e) {
+                    resolve({ success: false, error: "Invalid JSON from backend" });
+                }
+            });
+        });
+        req.on("error", (err) => {
+            console.error("Failed to call /openServerDashboard:", err.message);
+            resolve({ success: false, error: err.message });
+        });
+        req.setTimeout(1500, () => { try { req.destroy(); } finally { resolve({ success: false, error: "timeout" }); } });
+    });
+}
+
 // IPC from renderer to quit app explicitly (works on macOS too)
 ipcMain.on('app-quit', () => {
     shutdownBackend(1500).finally(() => app.quit());
+});
+
+// IPC to open Swing server overview window
+ipcMain.handle('open-overview-window', async () => {
+    const result = await callJavaOpenServerDashboard();
+    return result && typeof result === 'object' ? result : { success: false };
 });
 
 app.whenReady().then(() => {

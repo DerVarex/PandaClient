@@ -70,6 +70,14 @@ nav button {
     color: white;
     cursor: pointer;
 }
+#serverbtn, #serverbtn img {
+    -webkit-app-region: no-drag;
+    margin-left: 5px;
+    background: transparent;
+    border: none;
+    color: white;
+    cursor: pointer;
+}
 #instancesbtn {
     -webkit-app-region: no-drag;
     margin-left: 5px;
