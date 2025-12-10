@@ -414,8 +414,8 @@ window.openServerOverview = async function() {
     }
 };
 
-// --- Server management helpers (backend <-> Electron <-> Swing) ---
-
+// --- Server management helpers ---
+/*
 async function fetchServers() {
     try {
         const res = await fetch('http://localhost:8800/servers');
@@ -526,7 +526,7 @@ window.serverApi = {
     stopServerByName,
     killServerByName,
     sendServerCommand,
-};
+}; */
 
 // --- Instance Manager (list + detail) ---
 

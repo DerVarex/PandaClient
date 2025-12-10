@@ -2,7 +2,7 @@ package com.dervarex.PandaClient.Auth;
 
 import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
 import com.dervarex.PandaClient.utils.OS.OSUtil;
-import com.dervarex.PandaClient.utils.exceptions.NoConnectionException; // added
+import com.dervarex.PandaClient.utils.exceptions.NoConnectionException;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import net.lenni0451.commons.httpclient.HttpClient;

@@ -14,12 +14,6 @@ import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
 import com.dervarex.PandaClient.Minecraft.modrinth.ModrinthDownloader;
 import com.dervarex.PandaClient.Minecraft.modrinth.Category;
 import com.dervarex.PandaClient.Minecraft.modrinth.ModrinthProject;
-import com.dervarex.PandaClient.server.ui.CreateServer;
-import com.dervarex.PandaClient.server.ui.MainDashboard;
-import com.dervarex.PandaClient.server.ui.ServerSelector;
-import com.dervarex.PandaClient.server.Server;
-import com.dervarex.PandaClient.server.ServerManager;
-import com.dervarex.PandaClient.server.ServerType;
 
 import javax.swing.*;
 import java.io.File;
@@ -29,12 +23,12 @@ import java.util.Map;
 import java.util.Optional;
 
 import static com.dervarex.PandaClient.utils.file.getPandaClientFolder.getPandaClientFolder;
+import static fi.iki.elonen.NanoHTTPD.newFixedLengthResponse;
 
 public class ModServer extends NanoHTTPD {
     public ModServer(int port) {
         super(port);
         // ensure any previously saved servers are loaded into memory
-        ServerManager.loadServersFromDisk();
     }
 
     @Override
@@ -44,115 +38,10 @@ public class ModServer extends NanoHTTPD {
         if ("/modrinth/download".equals(uri) && session.getMethod() == Method.OPTIONS) {
             return jsonResponse(new org.json.JSONObject().put("success", true).toString());
         }
-        // --- /openServerDashboard ---
-        if ("/openServerDashboard".equals(uri)) {
-            try {
-                // Open the server selector UI (list + create)
-                SwingUtilities.invokeLater(() -> {
-                    ServerSelector selector = new ServerSelector();
-                    selector.setVisible(true);
-                });
-                ClientLogger.log("openServerDashboard -> ServerSelector UI opened", "INFO", "ModServer");
-                return jsonResponse(new JSONObject().put("success", true).toString());
-            } catch (Exception e) {
-                ClientLogger.log("Failed to open ServerSelector UI: " + e.getMessage(), "ERROR", "ModServer");
-                NotificationServerStart.getNotificationServer().showNotification(
-                        NotificationServer.NotificationType.ERROR,
-                        "ERROR: Could not open server manager: " + e.getMessage()
-                );
-                return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
-            }
-        }
-        // --- /servers (GET: list all saved servers) ---
-        if ("/servers".equals(uri) && session.getMethod() == Method.GET) {
-            org.json.JSONArray arr = new org.json.JSONArray();
-            for (Server s : ServerManager.listServers()) {
-                org.json.JSONObject o = new org.json.JSONObject();
-                o.put("name", s.getName());
-                o.put("version", s.getVersion());
-                o.put("running", s.isRunning());
-                arr.put(o);
-            }
-            return jsonResponse(new JSONObject().put("success", true).put("servers", arr).toString());
-        }
-        // --- /server/start ---
-        if ("/server/start".equals(uri)) {
-            try {
-                String body = readRequestBody(session);
-                JSONObject params = body.isBlank() ? new JSONObject() : new JSONObject(body);
-                String name = params.optString("name", "").trim();
-                if (name.isEmpty()) {
-                    return jsonResponse(new JSONObject().put("success", false).put("error", "Missing name").toString());
-                }
-                Server s = ServerManager.startExisting(name);
-                if (s == null) {
-                    return jsonResponse(new JSONObject().put("success", false).put("error", "Server not found").toString());
-                }
-                return jsonResponse(new JSONObject().put("success", true).put("name", s.getName()).toString());
-            } catch (Exception e) {
-                ClientLogger.log("/server/start failed: " + e.getMessage(), "ERROR", "ModServer");
-                return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
-            }
-        }
 
-        // --- /server/stop ---
-        if ("/server/stop".equals(uri)) {
-            String body;
-            try {
-                body = readRequestBody(session);
-                JSONObject params = body.isBlank() ? new JSONObject() : new JSONObject(body);
-                String name = params.optString("name", "").trim();
-                Server s = ServerManager.get(name);
-                if (s == null) {
-                    return jsonResponse(new JSONObject().put("success", false).put("error", "Server not found").toString());
-                }
-                s.stop();
-                return jsonResponse(new JSONObject().put("success", true).put("name", name).toString());
-            } catch (Exception e) {
-                ClientLogger.log("/server/stop failed: " + e.getMessage(), "ERROR", "ModServer");
-                return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
-            }
-        }
 
-        // --- /server/kill ---
-        if ("/server/kill".equals(uri)) {
-            try {
-                String body = readRequestBody(session);
-                JSONObject params = body.isBlank() ? new JSONObject() : new JSONObject(body);
-                String name = params.optString("name", "").trim();
-                Server s = ServerManager.get(name);
-                if (s == null) {
-                    return jsonResponse(new JSONObject().put("success", false).put("error", "Server not found").toString());
-                }
-                s.shutdown();
-                return jsonResponse(new JSONObject().put("success", true).put("name", name).toString());
-            } catch (Exception e) {
-                ClientLogger.log("/server/kill failed: " + e.getMessage(), "ERROR", "ModServer");
-                return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
-            }
-        }
 
-        // --- /server/command ---
-        if ("/server/command".equals(uri)) {
-            try {
-                String body = readRequestBody(session);
-                JSONObject params = body.isBlank() ? new JSONObject() : new JSONObject(body);
-                String name = params.optString("name", "").trim();
-                String cmd = params.optString("command", "").trim();
-                if (name.isEmpty() || cmd.isEmpty()) {
-                    return jsonResponse(new JSONObject().put("success", false).put("error", "Missing name or command").toString());
-                }
-                Server s = ServerManager.get(name);
-                if (s == null) {
-                    return jsonResponse(new JSONObject().put("success", false).put("error", "Server not found").toString());
-                }
-                s.sendCommand(cmd);
-                return jsonResponse(new JSONObject().put("success", true).toString());
-            } catch (Exception e) {
-                ClientLogger.log("/server/command failed: " + e.getMessage(), "ERROR", "ModServer");
-                return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
-            }
-        }
+
         //--- /edit-instance ---
         if ("/edit-instance".equals(uri)) {
             try {
@@ -637,7 +526,7 @@ public class ModServer extends NanoHTTPD {
     }
 
     // Helper: read request body according to content-length safely
-    private String readRequestBody(IHTTPSession session) throws IOException {
+    private String readRequestBody(NanoHTTPD.IHTTPSession session) throws IOException {
         int contentLength = Integer.parseInt(session.getHeaders().getOrDefault("content-length", "0"));
         if (contentLength <= 0) return "";
         // readNBytes ensures we actually capture the bytes and avoids ignored-result warnings
@@ -646,8 +535,8 @@ public class ModServer extends NanoHTTPD {
     }
 
     // Hilfsmethode für JSON + CORS
-    private Response jsonResponse(String json) {
-        Response res = newFixedLengthResponse(Response.Status.OK, "application/json", json);
+    private NanoHTTPD.Response jsonResponse(String json) {
+        NanoHTTPD.Response res = newFixedLengthResponse(NanoHTTPD.Response.Status.OK, "application/json", json);
         res.addHeader("Access-Control-Allow-Origin", "*");
         res.addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
         res.addHeader("Access-Control-Allow-Headers", "Content-Type");

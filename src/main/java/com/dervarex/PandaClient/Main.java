@@ -1,20 +1,12 @@
 package com.dervarex.PandaClient;
 
 import com.dervarex.PandaClient.Minecraft.logger.ClientLogger;
-import com.dervarex.PandaClient.server.ServerConfig;
-import com.dervarex.PandaClient.server.ui.CreateServer;
 import com.dervarex.PandaClient.utils.file.getPandaClientFolder;
 import de.Huskthedev.HusksStuff.DiscordRPC.DiscordManager;
 
 import java.io.File;
-import java.io.PrintWriter;
-import java.io.StringWriter;
 
 public class Main {
-    ServerConfig serverConfig = new ServerConfig();
-    public static ServerConfig getServerConfig() {
-        return new ServerConfig();
-    }
 
     public static void main(String[] args) {
         // Start logger early so everything can be recorded
