@@ -193,8 +193,11 @@ public class NetUtils {
 
     public static boolean isOnline() {
         try {
-            InetAddress inetAddress = InetAddress.getByName("8.8.8.8");
-            return inetAddress.isReachable(2000);
+            URL url = new URL("https://www.google.com");
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setConnectTimeout(2000); // 2 Sekunden
+            connection.connect();
+            return connection.getResponseCode() == 200;
 
         } catch (Exception e) {
             return false;

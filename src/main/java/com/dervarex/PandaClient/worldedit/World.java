@@ -20,6 +20,7 @@ public class World {
     public long DayTime;
     public String version;
     public long seed;
+    public Gamemode gamemode;
 
     public World(File location) {
         try {
@@ -41,6 +42,7 @@ public class World {
             this.DayTime = data.getLong("DayTime");
             this.version = data.getCompoundTag("Version").getString("Name");
             this.seed = data.getCompoundTag("WorldGenSettings").getLong("seed");
+            this.gamemode = Gamemode.fromInt(data.getInt("GameType"));
 
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -87,6 +89,7 @@ public class World {
     }
     public void changeGamemode(Gamemode gameMode) {
         try {
+            this.gamemode = gamemode;
             File levelDat = new File(location, "level.dat");
             NamedTag namedTag = NBTUtil.read(levelDat);
             CompoundTag root = (CompoundTag) namedTag.getTag();

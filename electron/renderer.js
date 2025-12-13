@@ -1,4 +1,11 @@
-console.log('renderer.js loaded');
+// Expose functions directly so inline handlers can call them immediately
+window.openInstanceManager = function() {
+    if (window.electronAPI?.openInstanceManager) {
+        window.electronAPI.openInstanceManager();
+    } else {
+        console.warn('openInstanceManager not available');
+    }
+};
 
 // Ensure instance manager starts hidden on load
 window.addEventListener('DOMContentLoaded', () => {
@@ -389,6 +396,7 @@ async function startGame() {
         showNotification('ERROR', 'Launch failed');
     }
 }
+
 window.openPandaClientFolder = async function() {
     try {
         await fetch("http://localhost:8800/openPandaClientFolder");
@@ -678,10 +686,13 @@ function renderInstanceDetail(inst) {
     detail.appendChild(footer);
 }
 
-window.openInstanceManager = function() {
-    // Navigate to dedicated instance manager page
-    window.location.href = 'sites/instance-manager.html';
-};
+// sicherstellen, dass DOM geladen ist
+window.addEventListener('DOMContentLoaded', () => {
+    window.openInstanceManager = function() {
+        window.electronAPI.openInstanceManager();
+    };
+});
+
 
 window.closeInstanceManager = function() {
     // No-op in main launcher now; kept for backward compatibility

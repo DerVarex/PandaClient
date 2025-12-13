@@ -3,6 +3,8 @@ const path = require("path");
 const fs = require("fs");
 const http = require("http");
 
+let mainWindow; //main window reference
+
 function createWindow() {
     let iconPath;
     if (process.platform === "win32") {
@@ -21,26 +23,42 @@ function createWindow() {
         }
     };
 
-    // Only set icon if it exists (prevents errors on missing file)
     if (fs.existsSync(iconPath)) {
         windowOptions.icon = iconPath;
     }
 
-    const win = new BrowserWindow(windowOptions);
-
-    win.removeMenu();
+    mainWindow = new BrowserWindow(windowOptions);
+    mainWindow.removeMenu();
 
     app.setPath('userData', path.join(app.getPath('userData'), 'PandaClientData'));
 
-    win.loadFile("index.html").catch(err => {
+    mainWindow.loadFile("index.html").catch(err => {
         console.error("Failed to load index.html:", err);
     });
 
-    // Open DevTools for debugging
-//    win.webContents.openDevTools();
+    // DevTools
+    mainWindow.webContents.openDevTools();
 }
 
-// Try to shut down the Java backend gracefully before quitting Electron
+// new window for Instance Manager
+function openInstanceManagerWindow() {
+    const instanceWindow = new BrowserWindow({
+        width: 800,
+        height: 600,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: true
+        }
+    });
+
+    instanceWindow.removeMenu();
+    instanceWindow.loadFile("sites/instance-manager.html").catch(err => {
+        console.error("Failed to load instance-manager.html:", err);
+    });
+}
+
+// Backend-Shutdown
 function shutdownBackend(timeoutMs = 1500) {
     return new Promise((resolve) => {
         let settled = false;
@@ -53,7 +71,7 @@ function shutdownBackend(timeoutMs = 1500) {
     });
 }
 
-// Helper to call Java backend endpoint to open Swing server UI
+// Java Swing Dashboard
 function callJavaOpenServerDashboard() {
     return new Promise((resolve) => {
         const req = http.get("http://127.0.0.1:8800/openServerDashboard", (res) => {
@@ -77,17 +95,39 @@ function callJavaOpenServerDashboard() {
     });
 }
 
-// IPC from renderer to quit app explicitly (works on macOS too)
+// IPC
 ipcMain.on('app-quit', () => {
     shutdownBackend(1500).finally(() => app.quit());
 });
 
-// IPC to open Swing server overview window
+// Dashboard-window
 ipcMain.handle('open-overview-window', async () => {
     const result = await callJavaOpenServerDashboard();
     return result && typeof result === 'object' ? result : { success: false };
 });
 
+// Instance Manager
+ipcMain.on('open-instance-manager', () => {
+    console.log("Opening Instance Manager window");
+    openInstanceManagerWindow();
+});
+ipcMain.on('open-instance-manager-window', () => {
+    console.log("Opening Instance Manager");
+    const win = new BrowserWindow({
+        width: 800,
+        height: 600,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false
+        }
+    });
+    win.removeMenu();
+    win.loadFile('sites/instance-manager.html');
+});
+
+
+// App Ready
 app.whenReady().then(() => {
     createWindow();
 

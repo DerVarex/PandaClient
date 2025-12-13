@@ -7,6 +7,9 @@ import com.dervarex.PandaClient.Minecraft.Profile.Profile;
 import com.dervarex.PandaClient.Minecraft.Profile.ProfileManagement;
 import com.dervarex.PandaClient.Minecraft.loader.Fabric;
 import com.dervarex.PandaClient.Minecraft.loader.LoaderType;
+import com.dervarex.PandaClient.worldedit.GUI.SelectWorldDashboard;
+import com.dervarex.PandaClient.worldedit.World;
+import com.dervarex.PandaClient.worldedit.WorldUtils;
 import fi.iki.elonen.NanoHTTPD;
 import com.dervarex.PandaClient.Auth.AuthManager;
 import org.json.JSONObject;
@@ -19,6 +22,7 @@ import javax.swing.*;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -388,8 +392,8 @@ public class ModServer extends NanoHTTPD {
                 return jsonResponse(new JSONObject().put("success", false).put("error", e.getMessage()).toString());
             }
         }
-                     // Neuer Endpoint: /deleteMod
-            if ("/deleteMod".equals(uri)) {
+        // --- deleteMod ---
+        if ("/deleteMod".equals(uri)) {
                 try {
                     String body = readRequestBody(session);
                     JSONObject params = new JSONObject(body);
@@ -516,6 +520,38 @@ public class ModServer extends NanoHTTPD {
                 System.exit(0);
             }, "ShutdownThread").start();
             return res;
+        }
+        // --- /openWorldEditor ---
+        if ("/openWorldEditor".equals(uri)) {
+            try {
+                String body = readRequestBody(session);
+                JSONObject params = new JSONObject(body);
+                String instance = params.optString("instance");
+                java.util.List<World> worlds = WorldUtils.getAvailableWorlds(new File(new File(getPandaClientFolder(), "instances"), instance));
+                SwingUtilities.invokeLater(() -> {
+                    SelectWorldDashboard panel = new SelectWorldDashboard(worlds);
+
+                    JFrame frame = new JFrame("World Editor");
+                    frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+                    frame.setContentPane(panel);
+                    frame.pack();
+                    frame.setLocationRelativeTo(null); // center
+                    frame.setVisible(true);
+                });
+
+                ClientLogger.log("Opened World Editor GUI", "INFO", "ModServer");
+                return jsonResponse(new JSONObject()
+                        .put("success", true)
+                        .toString());
+            } catch (Exception e) {
+                ClientLogger.log("Open World Editor failed: " + e.getMessage(), "ERROR", "ModServer");
+                ClientLogger.log("Stacktrace: " + e, "DEBUG", "ModServer");
+                NotificationServerStart.getNotificationServer().showNotification(NotificationServer.NotificationType.ERROR, "ERROR: Could not open World Editor: " + e.getMessage());
+                return jsonResponse(new JSONObject()
+                        .put("success", false)
+                        .put("error", e.getMessage())
+                        .toString());
+            }
         }
 
         // --- Not Found ---

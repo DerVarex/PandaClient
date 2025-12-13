@@ -155,7 +155,7 @@ function renderImDetail(inst) {
     iconWrap.appendChild(img);
 
     // Stabiles Laden des Kandidaten
-    loadImageStable(img, inst.imagePath);
+    //loadImageStable(img, inst.imagePath);            removed, because we no longer support images(yeah I was too lazy to fix it)
 
     const fields = document.createElement('div');
     fields.className = 'im-fields';
@@ -200,20 +200,40 @@ function renderImDetail(inst) {
     btnEdit.disabled = false;
     btnEdit.onclick = () => openEditMenu(inst);
 
-    // Neuer Button: Mods anzeigen
     const btnMods = document.createElement('button');
     btnMods.className = 'im-btn';
     btnMods.textContent = 'Mods';
     btnMods.onclick = () => openModManager(inst);
+    const btnWorlds = document.createElement('button');
+    btnWorlds.className = 'im-btn';
+    btnWorlds.textContent = 'Worlds';
+    btnWorlds.onclick = () => openWorldEditor(inst);
 
     footer.appendChild(btnLaunch);
     footer.appendChild(btnEdit);
     footer.appendChild(btnMods);
+    footer.appendChild(btnWorlds)
 
     detail.appendChild(header);
     detail.appendChild(main);
     detail.appendChild(footer);
 }
+window.openWorldEditor = async function(instance) {
+    try {
+        const res = await fetch("http://localhost:8800/openWorldEditor", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ instance: instance.name })
+        });
+
+        const data = await res.json(); // wenn backend JSON zurückliefert
+        console.log("openWorldEditor response:", data);
+    } catch (e) {
+        console.error("openWorldEditor failed:", e);
+        showNotification('ERROR', 'Could not open World Editor');
+    }
+};
+
 
 async function loadInstances() {
     try {
