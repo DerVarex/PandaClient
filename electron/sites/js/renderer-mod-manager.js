@@ -1,5 +1,37 @@
 console.log('renderer-mod-manager.js loaded');
 
+// Dynamic backend port configuration
+let BACKEND_PORT = 8800;
+let BACKEND_URL = 'http://localhost:8800';
+let backendReady = false;
+let backendReadyPromise = null;
+
+async function initBackendConfig() {
+    if (window.backendConfig) {
+        BACKEND_PORT = await window.backendConfig.getBackendPort();
+        BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
+        console.log('[MM] Using backend port:', BACKEND_PORT);
+    }
+    backendReady = true;
+}
+
+async function waitForBackend() {
+    if (backendReady) return;
+    if (!backendReadyPromise) {
+        backendReadyPromise = initBackendConfig();
+    }
+    await backendReadyPromise;
+}
+
+async function backendFetch(endpoint, options = {}) {
+    await waitForBackend();
+    const url = endpoint.startsWith('/') ? `${BACKEND_URL}${endpoint}` : `${BACKEND_URL}/${endpoint}`;
+    return fetch(url, options);
+}
+
+// Initialize backend config
+backendReadyPromise = initBackendConfig();
+
 function normalizeInstance(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const loaderRaw = raw.loader || raw.modloader || '';
@@ -21,7 +53,7 @@ let mmActiveIndex = -1;
 
 async function loadInstancesForMM() {
   try {
-    const res = await fetch('http://localhost:8800/instances');
+    const res = await backendFetch('/instances');
     const raw = await res.json();
     const arr = Array.isArray(raw) ? raw : (raw.instances || []);
     mmInstancesCache = normalizeInstances(arr);
@@ -81,7 +113,7 @@ async function openModsForInstance(inst) {
     return;
   }
   try {
-    const resp = await fetch('http://localhost:8800/mods', {
+    const resp = await backendFetch('/mods', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ profileName: String(inst.name) })
@@ -152,7 +184,7 @@ async function deleteMod(profileName, modName) {
   const sure = confirm(`Delete mod "${modName}" from instance "${profileName}"?`);
   if (!sure) return;
   try {
-    const resp = await fetch('http://localhost:8800/deleteMod', {
+    const resp = await backendFetch('/deleteMod', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ profileName: String(profileName), mod: String(modName) })
@@ -190,7 +222,7 @@ async function mmDoSearch() {
     if (mmActiveIndex >= 0 && mmInstancesCache[mmActiveIndex] && mmInstancesCache[mmActiveIndex].version) {
       payload.gameVersion = mmInstancesCache[mmActiveIndex].version;
     }
-    const resp = await fetch('http://localhost:8800/modrinth/search', {
+    const resp = await backendFetch('/modrinth/search', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
     });
     const data = await resp.json().catch(() => ({}));
@@ -251,7 +283,7 @@ async function mmDownloadMod(result) {
     if (inst.version) body.gameVersion = inst.version;
     const loaderMapped = mmMapLoader(inst.loader);
     if (loaderMapped) body.loader = loaderMapped;
-    const resp = await fetch('http://localhost:8800/modrinth/download', {
+    const resp = await backendFetch('/modrinth/download', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
     });
     const data = await resp.json().catch(()=>({}));

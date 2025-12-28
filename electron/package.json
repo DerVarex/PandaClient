@@ -1,10 +1,12 @@
 {
-  "name": "PandaClient",
+  "name": "pandaclient",
   "version": "1.0.0",
   "main": "main.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "electron ."
+    "prestart": "node scripts/check-deps.js",
+    "start": "electron .",
+    "check-deps": "node scripts/check-deps.js"
   },
   "keywords": [],
   "author": "dervarex",

@@ -89,10 +89,8 @@ public class NotificationServer extends WebSocketServer {
         if (instance != null) {
             instance.showNotification(type, message);
         } else {
-            // buffer until instance exists
             pending.add(new PendingNotification(type, message));
-            // also log so messages are visible in logs
-            ClientLogger.log("[NotificationServer] queued - " + type.name() + ": " + message, "WARN", "NotificationServer");
+            System.out.println("[NotificationServer] queued - " + type.name() + ": " + message);
         }
     }
 

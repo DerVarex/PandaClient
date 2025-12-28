@@ -1,5 +1,37 @@
 console.log('renderer-edit-instance.js loaded');
 
+// Dynamic backend port configuration
+let BACKEND_PORT = 8800;
+let BACKEND_URL = 'http://localhost:8800';
+let backendReady = false;
+let backendReadyPromise = null;
+
+async function initBackendConfig() {
+    if (window.backendConfig) {
+        BACKEND_PORT = await window.backendConfig.getBackendPort();
+        BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
+        console.log('[Edit] Using backend port:', BACKEND_PORT);
+    }
+    backendReady = true;
+}
+
+async function waitForBackend() {
+    if (backendReady) return;
+    if (!backendReadyPromise) {
+        backendReadyPromise = initBackendConfig();
+    }
+    await backendReadyPromise;
+}
+
+async function backendFetch(endpoint, options = {}) {
+    await waitForBackend();
+    const url = endpoint.startsWith('/') ? `${BACKEND_URL}${endpoint}` : `${BACKEND_URL}/${endpoint}`;
+    return fetch(url, options);
+}
+
+// Initialize backend config
+backendReadyPromise = initBackendConfig();
+
 // Simple helper to read query params
 function getQueryParam(key) {
     const params = new URLSearchParams(window.location.search);
@@ -21,7 +53,7 @@ function normalizeInstance(raw) {
 
 async function fetchInstanceById(id) {
     try {
-        const res = await fetch('http://localhost:8800/instances');
+        const res = await backendFetch('/instances');
         const raw = await res.json();
         const arr = Array.isArray(raw) ? raw : (raw.instances || []);
         const all = arr.map(normalizeInstance).filter(Boolean);
@@ -73,7 +105,7 @@ async function submitEditForm(e) {
     console.log('[inst-edit][submit]', payload);
 
     try {
-        const res = await fetch('http://localhost:8800/edit-instance', {
+        const res = await backendFetch('/edit-instance', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             // Send only the expected fields (id and name) as plain JSON

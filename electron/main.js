@@ -4,6 +4,60 @@ const fs = require("fs");
 const http = require("http");
 
 let mainWindow; //main window reference
+let backendPort = 8800; // Default port
+
+// Read backend port from file
+function readBackendPort() {
+    try {
+        const portFilePath = path.join(__dirname, '.backend-port');
+        if (fs.existsSync(portFilePath)) {
+            const portStr = fs.readFileSync(portFilePath, 'utf8').trim();
+            const port = parseInt(portStr, 10);
+            if (!isNaN(port) && port > 0) {
+                backendPort = port;
+                console.log('[main] Read backend port from file:', backendPort);
+                return port;
+            }
+        }
+    } catch (e) {
+        console.warn('[main] Could not read port file:', e.message);
+    }
+    return backendPort;
+}
+
+// Try to discover backend port by probing
+async function discoverBackendPort() {
+    const maxAttempts = 10;
+    for (let offset = 0; offset < maxAttempts; offset++) {
+        const port = 8800 + offset;
+        try {
+            const isResponding = await new Promise((resolve) => {
+                const req = http.get(`http://127.0.0.1:${port}/isLoggedIn`, (res) => {
+                    resolve(res.statusCode === 200);
+                });
+                req.on('error', () => resolve(false));
+                req.setTimeout(500, () => { req.destroy(); resolve(false); });
+            });
+            if (isResponding) {
+                backendPort = port;
+                console.log('[main] Discovered backend on port:', port);
+                return port;
+            }
+        } catch (e) {
+            // Continue to next port
+        }
+    }
+    console.log('[main] Using default port:', backendPort);
+    return backendPort;
+}
+
+// Initialize backend port
+async function initBackendPort() {
+    // First try to read from file
+    readBackendPort();
+    // Then try to discover (validates the port is actually running)
+    await discoverBackendPort();
+}
 
 function createWindow() {
     let iconPath;
@@ -62,7 +116,7 @@ function openInstanceManagerWindow() {
 function shutdownBackend(timeoutMs = 1500) {
     return new Promise((resolve) => {
         let settled = false;
-        const req = http.get("http://127.0.0.1:8800/shutdown", (res) => {
+        const req = http.get(`http://127.0.0.1:${backendPort}/shutdown`, (res) => {
             res.on("data", () => {});
             res.on("end", () => { if (!settled) { settled = true; resolve(); } });
         });
@@ -74,7 +128,7 @@ function shutdownBackend(timeoutMs = 1500) {
 // Java Swing Dashboard
 function callJavaOpenServerDashboard() {
     return new Promise((resolve) => {
-        const req = http.get("http://127.0.0.1:8800/openServerDashboard", (res) => {
+        const req = http.get(`http://127.0.0.1:${backendPort}/openServerDashboard`, (res) => {
             let body = "";
             res.setEncoding("utf8");
             res.on("data", chunk => body += chunk);
@@ -98,6 +152,11 @@ function callJavaOpenServerDashboard() {
 // IPC
 ipcMain.on('app-quit', () => {
     shutdownBackend(1500).finally(() => app.quit());
+});
+
+// Get backend port for renderer
+ipcMain.handle('get-backend-port', () => {
+    return backendPort;
 });
 
 // Dashboard-window
@@ -128,7 +187,8 @@ ipcMain.on('open-instance-manager-window', () => {
 
 
 // App Ready
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+    await initBackendPort();
     createWindow();
 
     app.on("activate", () => {

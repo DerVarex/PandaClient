@@ -7,6 +7,45 @@ window.openInstanceManager = function() {
     }
 };
 
+// Dynamic backend port configuration
+let BACKEND_PORT = 8800;
+let BACKEND_URL = 'http://localhost:8800';
+let backendReady = false;
+let backendReadyPromise = null;
+
+async function initBackendConfig() {
+    if (window.backendConfig) {
+        BACKEND_PORT = await window.backendConfig.getBackendPort();
+        BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
+        console.log('[renderer] Using backend port:', BACKEND_PORT);
+    }
+    backendReady = true;
+}
+
+function getBackendUrl(endpoint) {
+    const base = BACKEND_URL;
+    return endpoint.startsWith('/') ? `${base}${endpoint}` : `${base}/${endpoint}`;
+}
+
+// Wait for backend config to be ready before making requests
+async function waitForBackend() {
+    if (backendReady) return;
+    if (!backendReadyPromise) {
+        backendReadyPromise = initBackendConfig();
+    }
+    await backendReadyPromise;
+}
+
+// Helper function for backend fetch with dynamic port
+async function backendFetch(endpoint, options = {}) {
+    await waitForBackend();
+    const url = getBackendUrl(endpoint);
+    return fetch(url, options);
+}
+
+// Initialize backend config as early as possible
+backendReadyPromise = initBackendConfig();
+
 // Ensure instance manager starts hidden on load
 window.addEventListener('DOMContentLoaded', () => {
     const im = document.getElementById('instance-manager');
@@ -37,7 +76,7 @@ document.getElementById("create-instance-form").addEventListener("submit", async
 //    }
 
     try {
-        const res = await fetch("http://localhost:8800/create-instance", {
+        const res = await backendFetch('/create-instance', {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(data)
@@ -102,7 +141,7 @@ if(type === "ERROR") {
 
 async function checkLogin() {
     try {
-        const resp = await fetch("http://localhost:8800/isLoggedIn");
+        const resp = await backendFetch('/isLoggedIn');
         const data = await resp.json();
         console.log("isLoggedIn Antwort:", data);
 
@@ -113,7 +152,7 @@ async function checkLogin() {
         // Try saved session first if available
         if (data.hasSaved) {
             try {
-                const respSaved = await fetch("http://localhost:8800/loginWithToken");
+                const respSaved = await backendFetch('/loginWithToken');
                 const resSaved = await respSaved.json();
                 if (resSaved.success) {
                     closeLoginWindow();
@@ -144,7 +183,7 @@ async function checkLogin() {
 let loginStatusPoller = null;
 async function startDeviceCodeLogin() {
     try {
-        const resp = await fetch(`http://localhost:8800/login`);
+        const resp = await backendFetch('/login');
         const state = await resp.json();
         console.log("/login state:", state);
         updateLoginUI(state);
@@ -159,7 +198,7 @@ async function startDeviceCodeLogin() {
 
 async function pollLoginStatus() {
     try {
-        const resp = await fetch(`http://localhost:8800/login/status`);
+        const resp = await backendFetch('/login/status');
         const state = await resp.json();
         console.log("/login/status:", state);
         updateLoginUI(state);
@@ -199,7 +238,7 @@ function updateLoginUI(state) {
 }
 
 async function fetchInstances() {
-    const res = await fetch('http://localhost:8800/instances');
+    const res = await backendFetch('/instances');
     const instances = await res.json();
     console.log('[instances][raw]', instances);
     // renderInstances(instances); // Commented out to avoid error
@@ -248,7 +287,7 @@ window.swapVersion = async function(event) {
 
 async function fetchInstancesFromBackend() {
     try {
-        const res = await fetch('http://localhost:8800/instances');
+        const res = await backendFetch('/instances');
         const raw = await res.json();
         console.log('[instances][raw fetchInstancesFromBackend]', raw);
         const arr = Array.isArray(raw) ? raw : (raw.instances || []);
@@ -385,9 +424,9 @@ async function startGame() {
         const inst = selectedInstance.name ? selectedInstance : normalizeInstance(selectedInstance);
         const params = new URLSearchParams();
         if (inst && inst.name) params.set('profileName', inst.name); // Backend erwartet profileName
-        const url = `http://localhost:8800/launch${params.toString() ? ('?' + params.toString()) : ''}`;
+        const url = `/launch${params.toString() ? ('?' + params.toString()) : ''}`;
         console.log('[launch][request]', url);
-        const resp = await fetch(url);
+        const resp = await backendFetch(url);
         const data = await resp.json().catch(() => ({}));
         console.log('[launch][response]', data);
         showNotification(data.success ? 'INFO' : 'ERROR', data.success ? `Launching ${inst.name}` : (data.error || 'Launch failed'));
@@ -399,7 +438,7 @@ async function startGame() {
 
 window.openPandaClientFolder = async function() {
     try {
-        await fetch("http://localhost:8800/openPandaClientFolder");
+        await backendFetch('/openPandaClientFolder');
     } catch (e) {
         console.error("openPandaClientFolder failed:", e);
         showNotification('ERROR', 'Could not open Panda Client folder');
@@ -409,7 +448,7 @@ window.openPandaClientFolder = async function() {
 // Add: open the server overview in a new native window using the preload-exposed API
 window.openServerOverview = async function() {
     try {
-        const res = await fetch('http://localhost:8800/openServerDashboard', {
+        const res = await backendFetch('/openServerDashboard', {
             method: 'GET',
         });
         if (!res.ok) {

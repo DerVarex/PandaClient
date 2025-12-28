@@ -1,5 +1,37 @@
 console.log('renderer-instance-manager.js loaded');
 
+// Dynamic backend port configuration
+let BACKEND_PORT = 8800;
+let BACKEND_URL = 'http://localhost:8800';
+let backendReady = false;
+let backendReadyPromise = null;
+
+async function initBackendConfig() {
+    if (window.backendConfig) {
+        BACKEND_PORT = await window.backendConfig.getBackendPort();
+        BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
+        console.log('[IM] Using backend port:', BACKEND_PORT);
+    }
+    backendReady = true;
+}
+
+async function waitForBackend() {
+    if (backendReady) return;
+    if (!backendReadyPromise) {
+        backendReadyPromise = initBackendConfig();
+    }
+    await backendReadyPromise;
+}
+
+async function backendFetch(endpoint, options = {}) {
+    await waitForBackend();
+    const url = endpoint.startsWith('/') ? `${BACKEND_URL}${endpoint}` : `${BACKEND_URL}/${endpoint}`;
+    return fetch(url, options);
+}
+
+// Initialize backend config
+backendReadyPromise = initBackendConfig();
+
 // Cache für Bildpfade
 const badImagePaths = new Set();
 const goodImagePaths = new Set();
@@ -182,9 +214,9 @@ function renderImDetail(inst) {
         try {
             const params = new URLSearchParams();
             if (inst && inst.name) params.set('profileName', inst.name);
-            const url = `http://localhost:8800/launch${params.toString() ? ('?' + params.toString()) : ''}`;
-            console.log('[launch][IM][request]', url);
-            const resp = await fetch(url);
+            const endpoint = `/launch${params.toString() ? ('?' + params.toString()) : ''}`;
+            console.log('[launch][IM][request]', endpoint);
+            const resp = await backendFetch(endpoint);
             const data = await resp.json().catch(() => ({}));
             console.log('[launch][IM][response]', data);
             alert(data.success ? `Launching ${inst.name}` : (data.error || 'Launch failed'));
@@ -220,7 +252,7 @@ function renderImDetail(inst) {
 }
 window.openWorldEditor = async function(instance) {
     try {
-        const res = await fetch("http://localhost:8800/openWorldEditor", {
+        const res = await backendFetch('/openWorldEditor', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ instance: instance.name })
@@ -237,7 +269,7 @@ window.openWorldEditor = async function(instance) {
 
 async function loadInstances() {
     try {
-        const res = await fetch('http://localhost:8800/instances');
+        const res = await backendFetch('/instances');
         const raw = await res.json();
         const arr = Array.isArray(raw) ? raw : (raw.instances || []);
         imInstancesCache = normalizeInstances(arr);

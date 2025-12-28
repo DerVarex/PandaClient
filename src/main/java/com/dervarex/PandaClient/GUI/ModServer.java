@@ -106,6 +106,29 @@ public class ModServer extends NanoHTTPD {
                     .toString();
             return jsonResponse(json);
         }
+        // --- /user ---
+        if ("/user".equals(uri)) {
+            AuthManager.User user = AuthManager.getUser();
+            if (user == null) {
+                return jsonResponse(new JSONObject()
+                        .put("success", false)
+                        .put("error", "Not logged in")
+                        .toString());
+            }
+            String json = new JSONObject()
+                    .put("success", true)
+                    .put("username", user.getUsername())
+                    .put("uuid", user.getUuid())
+                    .toString();
+            return jsonResponse(json);
+        }
+        // --- /port ---
+        if ("/port".equals(uri)) {
+            return jsonResponse(new JSONObject()
+                    .put("success", true)
+                    .put("port", this.getListeningPort())
+                    .toString());
+        }
         // --- /launch ---
         if ("/launch".equals(uri)) {
             try {
